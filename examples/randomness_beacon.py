@@ -106,7 +106,7 @@ class RandomnessBeacon(MerkelizedObject):
             block["id"] = block["blockHash"]
         with self.block_change_lock:
             old_tip = self._engine.tip()
-            self._engine.observe_network(message)
+            self._engine.observe(message)
             self._sync_cache()
             if self._engine.tip() != old_tip:
                 self.block_replacement_event.set()

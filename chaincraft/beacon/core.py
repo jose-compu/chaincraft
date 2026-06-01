@@ -68,7 +68,7 @@ class RandomnessBeacon:
         self._ingest(block)
         return block
 
-    def _ingest(self, block: BeaconBlock) -> None:
+    def _ingest(self, block: BeaconBlock, *, verify: bool = True) -> None:
         if self.chain.contains(block.block_id):
             return
         if block.height == 0:
@@ -81,40 +81,21 @@ class RandomnessBeacon:
             raise BeaconError(
                 f"height mismatch: expected {expected_height}, got {block.height}"
             )
-        if self.max_timestamp_skew is not None and block.height > 0:
-            if abs(block.timestamp - int(time.time())) > self.max_timestamp_skew:
-                raise BeaconError("timestamp outside allowed skew")
-        if not self.block_source.verify(block, parent, block.height):
-            raise BeaconError(f"invalid block id for {block.block_id!r}")
+        if verify:
+            if self.max_timestamp_skew is not None and block.height > 0:
+                if abs(block.timestamp - int(time.time())) > self.max_timestamp_skew:
+                    raise BeaconError("timestamp outside allowed skew")
+            if not self.block_source.verify(block, parent, block.height):
+                raise BeaconError(f"invalid block id for {block.block_id!r}")
         self._blocks[block.block_id] = block
         self.last_result = self.chain.add_block(block.block_id, parent, work=1)
 
-    def ingest_dict(self, data: Dict[str, Any]) -> None:
+    def ingest_dict(self, data: Dict[str, Any], *, verify: bool = True) -> None:
         """Accept a serialized block (wrapped or raw BEACON_BLOCK)."""
         if data.get("consensus") == "beacon" and data.get("op") == "block":
             data = data["block"]
         block = BeaconBlock.from_dict(data)
-        self._ingest(block)
-
-    def ingest_dict_network(self, data: Dict[str, Any]) -> None:
-        """Accept a gossiped block without re-verifying PoW (legacy networked beacon)."""
-        if data.get("consensus") == "beacon" and data.get("op") == "block":
-            data = data["block"]
-        block = BeaconBlock.from_dict(data)
-        if self.chain.contains(block.block_id):
-            return
-        if block.height == 0:
-            return
-        parent = block.prev_hash
-        if not self.chain.contains(parent):
-            raise BeaconError(f"unknown parent {parent!r}")
-        expected_height = self.chain.block_height(parent) + 1
-        if block.height != expected_height:
-            raise BeaconError(
-                f"height mismatch: expected {expected_height}, got {block.height}"
-            )
-        self._blocks[block.block_id] = block
-        self.last_result = self.chain.add_block(block.block_id, parent, work=1)
+        self._ingest(block, verify=verify)
 
     # -- randomness output -------------------------------------------------
     def finalized_height(self) -> int:

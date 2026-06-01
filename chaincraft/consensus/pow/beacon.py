@@ -73,6 +73,7 @@ class RandomnessBeaconConsensus(PoWConsensus):
             self._beacon = config.build()
         except Exception as exc:
             raise ConsensusError(str(exc)) from exc
+        self._relaxed_gossip = block_source == "legacy_pow"
 
     @property
     def chain(self):
@@ -105,29 +106,18 @@ class RandomnessBeaconConsensus(PoWConsensus):
         data = message_data(message)
         if not isinstance(data, dict):
             return
+        verify = not self._relaxed_gossip
         if data.get("consensus") == "beacon" and data.get("op") == "block":
             try:
-                self._beacon.ingest_dict(data)
+                self._beacon.ingest_dict(data, verify=verify)
             except Exception:
                 pass
             return
         if data.get("message_type") == MESSAGE_TYPE:
             try:
-                self._beacon.ingest_dict(data)
+                self._beacon.ingest_dict(data, verify=verify)
             except Exception:
                 pass
-
-    def observe_network(self, message: Any) -> None:
-        """Ingest legacy BEACON_BLOCK gossip without PoW re-check."""
-        data = message_data(message)
-        if not isinstance(data, dict):
-            return
-        if data.get("message_type") != MESSAGE_TYPE:
-            return
-        try:
-            self._beacon.ingest_dict_network(data)
-        except Exception:
-            pass
 
     def is_valid(self, message: Any) -> bool:
         data = message_data(message)
