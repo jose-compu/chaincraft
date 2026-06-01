@@ -20,14 +20,46 @@ a configuration change, not a rewrite:
 Two rules keep usage uniform across the whole library:
 
 1. **Select by name through a registry.** Every component family exposes a
-   `get_*` helper (`get_ledger_model`, `get_fee_policy`, `get_consensus_engine`)
-   and a name→class registry, so a default works out of the box and any part is
-   one string away from being swapped.
+   `get_*` helper (`get_ledger_model`, `get_fee_policy`, `get_consensus_engine`,
+   `get_block_source`, `get_membership_policy`, …) and a name→class registry, so a
+   default works out of the box and any part is one string away from being swapped.
 2. **Impossible combinations fail fast.** Components validate their own
    parameters on construction, and `BlockchainConfig.validate()` rejects
    self-contradictory assemblies with a clear `ConfigError`. The system is
    highly configurable, but it will not let you build something that cannot
    work (see "Configuration Validation").
+
+## Quick Reference: What You Implement
+
+Use this table to pick the right base class and the methods you must override.
+
+| Goal | Base class | Required methods | Optional hooks |
+|---|---|---|---|
+| **Gossip protocol** (chat, voting, CRDT, …) | `SharedObject` | `is_valid`, `add_message` | `handle_p2p`, merkelized digest API, `emit_state_memento`, `_attach_node` |
+| **Request–response protocol** (Slush-style sampling) | `SharedObject` | `is_valid` (stub), `add_message` (stub), `handle_p2p` | `_attach_node` for `send_to_peer` |
+| **Merkelized chain / DAG** | `SharedObject` | above + `is_merkelized`→`True`, digest + `gossip_object` | `get_state_digests` for multi-tip frontiers |
+| **Consensus engine** | `GossipConsensus`, `BFTConsensus`, `PoWConsensus`, or `DAGConsensus` | `propose`, `is_decided`, `decision` | `observe`, `on_p2p`, `is_valid`, `start` |
+| **Chat-style protocol with pluggable rules** | `ChatGroup` + `MembershipPolicy` | policy: `may_create`, `may_join`, `may_post` | override `ChatGroup.is_valid` / `add_message` for new actions |
+| **Beacon block production** | `BlockSource` | `produce`, `verify` | register in `BLOCK_SOURCES` |
+| **Beacon randomness mapping** | `RandomnessDerivation` | `derive` | register in `RANDOMNESS_DERIVATIONS` |
+| **Ledger model** | `LedgerModel` | genesis, apply block/tx, validate | register in `LEDGER_MODELS` |
+| **Fee market** | `FeePolicy` | `select_for_block`, `effective_charge`, `is_valid_fee` | register in `FEE_POLICIES` |
+
+**Registration pattern (consensus).** Decorate your class with `@register_consensus`
+(or call `default_registry.register(MyEngine)`) and import the module once so
+the decorator runs. Then select it by name:
+
+```python
+from chaincraft.consensus import get_consensus_engine
+engine = get_consensus_engine("my_engine", **kwargs)
+node.add_shared_object(engine)
+```
+
+**Registration pattern (beacon parts).** Add your class to the family dict
+(`BLOCK_SOURCES` or `RANDOMNESS_DERIVATIONS`) in your own module, or pass a
+ready-made instance to `RandomnessBeacon(block_source=MySource(), …)`.
+
+See **Extension Cookbook** below for full walkthroughs.
 
 ## Architecture Overview
 
@@ -79,8 +111,26 @@ messages; use `node.create_shared_message(data)` instead.
 
 ### SharedObject
 
-The abstract base class for protocol logic. Every protocol implements
-one `SharedObject` subclass.
+The abstract base class for protocol logic. Every decentralized protocol
+implements one `SharedObject` subclass (or attaches a `ConsensusEngine`, which
+is also a `SharedObject` adapter).
+
+#### Required (every protocol)
+
+| Method | Role |
+|---|---|
+| `is_valid(message) -> bool` | Structural + semantic validation **before** state changes. Return `False` to reject (sender gets a strike). |
+| `add_message(message, frontier_state=None) -> Optional[StateMemento]` | **Single gossip entry point.** Apply the state transition; dispatch internally by `message_type` / `action`. Return a `StateMemento` when downstream objects need your canonical frontier (reorg-aware pipelines). |
+
+#### Optional (pick what your protocol needs)
+
+| Method | When to implement |
+|---|---|
+| `handle_p2p(addr, data)` | Point-to-point messages with a top-level `"p2p"` key (not stored or gossiped). |
+| `_attach_node(node)` | Called by `ChaincraftNode.add_shared_object()`; store `self.node` for `send_to_peer` / `create_shared_message`. |
+| `is_merkelized()` + digest API | Digest-linked sync (chains, DAGs, merkle trees). See **Merkelized Objects**. |
+| `emit_state_memento()` | Override only if the default digest-based memento is insufficient. |
+| `get_state_digests()` | Multi-tip / fork frontiers (default: latest digest only). |
 
 ```python
 from chaincraft.shared_object import SharedObject
@@ -93,15 +143,7 @@ class MyProtocolObject(SharedObject):
         message: SharedMessage,
         frontier_state: Optional[StateMemento] = None,
     ) -> Optional[StateMemento]: ...
-    def emit_state_memento(self) -> StateMemento: ...
-    def get_state_digests(self) -> List[str]: ...
-    def is_merkelized(self) -> bool: ...
-    def get_latest_digest(self) -> str: ...
-    def has_digest(self, hash_digest: str) -> bool: ...
-    def is_valid_digest(self, hash_digest: str) -> bool: ...
-    def add_digest(self, hash_digest: str) -> bool: ...
-    def gossip_object(self, digest) -> List[SharedMessage]: ...
-    def get_messages_since_digest(self, digest: str) -> List[SharedMessage]: ...
+    # Optional merkelized / P2P methods — see sections below
 ```
 
 ### ChaincraftNode
@@ -279,14 +321,28 @@ Focus on two methods:
 ```python
 def add_message(self, message, frontier_state=None):
     data = message.data
-    if data["blockHeight"] == len(self.blocks) - 1:
-        self._handle_replacement(data)
-    else:
-        self._handle_new_block(data)
+    if data.get("action") == "CREATE":
+        self._create_room(data)
+    elif data.get("action") == "POST":
+        self._post(data)
+    return None  # or StateMemento if downstream objects need your frontier
 ```
 
 All protocol-specific routing lives inside `add_message()`, delegating
 to `_private_methods()` as needed.
+
+**Message envelope.** Use a stable `"message_type"` string (e.g. `"MY_PROTOCOL"`)
+or, for consensus engines, a `"consensus"` tag plus family-specific fields.
+JSON-serializable dicts only — the node hashes and gossips the serialized form.
+
+**Node reference.** If you need `send_to_peer`, implement:
+
+```python
+def _attach_node(self, node):
+    self.node = node
+```
+
+`ChaincraftNode.add_shared_object()` calls this automatically when present.
 
 ### 2. Register it with the node
 
@@ -402,7 +458,9 @@ config = BlockchainConfig(consensus_engine="tendermint", fork_choice="bft_finali
                           consensus_kwargs={"validator_id": "v0",
                                             "validators": ["v0","v1","v2","v3"]})
 builder = BlockchainBuilder(config)
-chain = builder.wire_node(node)        # builds chain + attaches engine to node
+chain = builder.wire_node(node)        # builds chain; sets node.consensus_engine
+if getattr(node, "consensus_engine", None) is not None:
+    node.add_shared_object(node.consensus_engine)
 ```
 
 Swapping the ledger or fee market is a one-line change to the config; nothing
@@ -473,7 +531,7 @@ a pseudorandom float via a pluggable :class:`RandomnessDerivation`.
 
 | Component | Registry | Names |
 |---|---|---|
-| Block source | `chaincraft.beacon` | `hash_chain` (default), `sequential`, `pow` |
+| Block source | `chaincraft.beacon` | `hash_chain` (default), `sequential`, `pow`, `legacy_pow` |
 | Randomness derivation | `chaincraft.beacon` | `direct`, `rehash`, `timestamp_mix`, `xor_chain`, `modulo`, `height_salt` |
 
 ```python
@@ -488,6 +546,35 @@ from chaincraft.consensus import get_consensus_engine
 engine = get_consensus_engine("beacon", randomness="xor_chain")
 engine.propose()
 ```
+
+### Extending the beacon
+
+**New block source.** Subclass `BlockSource`:
+
+```python
+from chaincraft.beacon.block_source import BlockSource, BLOCK_SOURCES
+from chaincraft.beacon.base import BeaconBlock
+
+class MyBlockSource(BlockSource):
+    name = "my_source"
+
+    def produce(self, prev_hash, height, timestamp=None, **kwargs) -> BeaconBlock:
+        ...  # return BeaconBlock(height, prev_hash, ts, block_id, extra={...})
+
+    def verify(self, block, prev_hash, height) -> bool:
+        ...  # re-derive or check proof
+
+BLOCK_SOURCES["my_source"] = MyBlockSource  # or patch before build_beacon()
+beacon = build_beacon(block_source="my_source")
+```
+
+**New randomness derivation.** Subclass `RandomnessDerivation` and implement
+`derive(block_id, block, canonical_ids) -> float` in `[0, 1)`. Register in
+`RANDOMNESS_DERIVATIONS` or pass an instance to `RandomnessBeacon(derivation=…)`.
+
+**New consensus adapter.** Wrap a configured beacon in a `@register_consensus`
+subclass of `PoWConsensus` (see `chaincraft/consensus/pow/beacon.py`) if the
+beacon must gossip through `ChaincraftNode`.
 
 ## Decentralized Protocols (0.6.0)
 
@@ -509,7 +596,37 @@ store = CRDTKeyValue()
 store.add_message(SharedMessage(data=store.local_put("color", "blue", writer="a")))
 ```
 
-The legacy teaching example remains at `examples/chatroom_protocol.py`.
+The legacy teaching adapter remains at `examples/chatroom_protocol.py`.
+Core usage demos live under `examples/*_demo.py` (see **Examples**).
+
+### Extending an existing protocol family
+
+**ChatGroup — new membership policy.** Subclass `MembershipPolicy` and
+implement the three gates:
+
+```python
+from chaincraft.protocols.chat.membership import MembershipPolicy
+
+class TokenGatedMembership(MembershipPolicy):
+    name = "token_gated"
+
+    def may_create(self, room, actor_key, data): ...
+    def may_join(self, room, actor_key, data): ...
+    def may_post(self, room, actor_key, data): ...
+
+# Pass an instance (or register in MEMBERSHIP_POLICIES for get_membership_policy)
+group = ChatGroup(membership=TokenGatedMembership())
+```
+
+**ChatGroup / TopicPubSub / CRDT — new actions.** Subclass the protocol
+`SharedObject`, override `is_valid` and `add_message`, call `super()` only
+if you extend rather than replace behaviour. Follow the same
+`message_type` + `action` dispatch pattern as `TopicPubSub`.
+
+**New protocol module.** Add `chaincraft/protocols/myapp/foo.py` with a
+`SharedObject` subclass; export from `chaincraft/protocols/__init__.py` if
+it belongs in the public API. No registry is required unless you want
+name-based selection — attach with `node.add_shared_object(MyProtocol())`.
 
 ## Consensus Engines (0.6.0)
 
@@ -536,24 +653,32 @@ engine.is_decided(), engine.decision()
 
 Every engine subclasses a category base (`GossipConsensus`, `PoWConsensus`,
 `BFTConsensus`, `DAGConsensus`, all of which extend `ConsensusEngine`) and
-implements three abstract methods plus, optionally, message hooks:
+implements three abstract lifecycle methods. Message hooks and validation are
+optional but typical.
+
+| Method | Required? | Purpose |
+|---|---|---|
+| `propose(value)` | **Yes** | Locally initiate or advance consensus toward a decision. |
+| `is_decided() -> bool` | **Yes** | Whether a final value is known. |
+| `decision()` | **Yes** | The decided value, or `None`. |
+| `observe(message)` | No | Handle gossiped `SharedMessage` (routed via default `add_message`). |
+| `on_p2p(addr, data)` | No | Handle direct `"p2p"` messages (routed via `handle_p2p`). |
+| `is_valid(message)` | No | Filter gossip before `observe` (default: accept all). |
+| `start()` | No | Background timer / round driver after node starts. |
+| `broadcast(data)` | Provided | Gossip via attached node (`create_shared_message`). |
 
 ```python
 class ConsensusEngine(ABC):
-    name: str = "abstract"           # registry key
-    category: str = "abstract"       # one of the families above
+    name: str = "abstract"           # registry key — must be unique
+    category: str = "abstract"       # gossip | pow | bft | dag
 
-    # Lifecycle (you implement these three)
-    def propose(self, value): ...        # submit a value to drive a decision
-    def is_decided(self) -> bool: ...    # has a decision been reached?
-    def decision(self): ...              # the decided value, or None
-
-    # Message hooks (override what you need)
-    def observe(self, message): ...      # a gossiped SharedMessage arrived
-    def on_p2p(self, addr, data): ...    # a direct P2P message arrived
-
-    # Node integration (provided; rarely overridden)
-    def broadcast(self, data): ...       # gossip via the attached node
+    def propose(self, value): ...
+    def is_decided(self) -> bool: ...
+    def decision(self): ...
+    def observe(self, message): ...      # override
+    def on_p2p(self, addr, data): ...    # override
+    def is_valid(self, message): ...     # override
+    def broadcast(self, data): ...       # provided
 ```
 
 An engine **is** a `SharedObject`: its default `is_valid` / `add_message` /
@@ -570,17 +695,26 @@ After attachment, `engine.broadcast(data)` gossips through
 agnostic**: drive it with a real `ChaincraftNode`, or with an in-memory bus in
 tests, without changing the engine.
 
+**Minimal reference.** `chaincraft/consensus/gossip/relay.py` (`RelayProposalConsensus`)
+is the smallest complete engine — copy it when starting a new gossip-family engine.
+
 ### Extending or forking a consensus protocol
 
-1. Pick the family and subclass its base.
-2. Implement `propose`, `is_decided`, `decision`; override `observe` /
-   `on_p2p` as needed; validate parameters in `__init__`.
-3. Register it with `@register_consensus` so it is selectable by name.
+1. **Pick the family** (`gossip`, `bft`, `pow`, or `dag`) and subclass its base.
+   Categories are fixed in 0.6.0; pick the closest family even when forking.
+2. **Set `name`** to a unique registry string (e.g. `"my_tendermint"`).
+3. **Implement** `propose`, `is_decided`, `decision`.
+4. **Override** `observe` / `on_p2p` / `is_valid` for network input; tag messages
+   with `"consensus": self.name` (or a dedicated tag) so you ignore foreign traffic.
+5. **Validate parameters** in `__init__`; raise `ConsensusError` for impossible
+   configs; emit `UnstableConsensusWarning` for allowed-but-weak settings.
+6. **Register** with `@register_consensus` and **import your module** before calling
+   `get_consensus_engine("my_engine")`.
 
 ```python
 from chaincraft.consensus import register_consensus
 from chaincraft.consensus.gossip import GossipConsensus
-from chaincraft.consensus.base import message_data
+from chaincraft.consensus.base import message_data, ConsensusError
 
 @register_consensus
 class MyGossipConsensus(GossipConsensus):
@@ -589,25 +723,59 @@ class MyGossipConsensus(GossipConsensus):
     def __init__(self, threshold=3, **kwargs):
         super().__init__(**kwargs)
         if threshold < 1:
-            from chaincraft.consensus.base import ConsensusError
             raise ConsensusError("threshold must be >= 1")
         self.threshold = threshold
+        self._votes = []
         self._decision = None
 
     def propose(self, value):
-        self.broadcast({"consensus": self.name, "value": value})
+        self.broadcast({"consensus": self.name, "op": "propose", "value": value})
 
     def observe(self, message):
         data = message_data(message)
-        if isinstance(data, dict) and data.get("consensus") == self.name:
-            ...  # accumulate evidence, set self._decision when satisfied
+        if not isinstance(data, dict) or data.get("consensus") != self.name:
+            return
+        if data.get("op") == "propose":
+            self._votes.append(data["value"])
+            if len(self._votes) >= self.threshold:
+                self._decision = data["value"]
+
+    def is_valid(self, message):
+        data = message_data(message)
+        return isinstance(data, dict) and data.get("consensus") == self.name
 
     def is_decided(self): return self._decision is not None
     def decision(self): return self._decision
 ```
 
-To fork an existing engine, subclass it (or copy its module under the same
-family), override only the decision logic, and register under a new `name`.
+**Fork an existing engine.** Subclass `TendermintConsensus`, `AvalancheConsensus`,
+etc., override the phase or voting logic, register under a **new** `name`.
+Do not reuse an existing registry key.
+
+**Wire into a blockchain node.**
+
+```python
+from chaincraft.config import BlockchainConfig, BlockchainBuilder
+
+config = BlockchainConfig(
+    consensus_engine="my_gossip",
+    consensus_kwargs={"threshold": 4},
+    fork_choice="bft_finality",
+)
+builder = BlockchainBuilder(config)
+chain = builder.wire_node(node)          # sets node.consensus_engine
+node.add_shared_object(node.consensus_engine)
+node.start()
+node.consensus_engine.propose("candidate-block")
+```
+
+**PoW / DAG families.** Same lifecycle methods; implementation differs:
+- `PoWConsensus` engines usually wrap `ForkAwareChain` for fork choice.
+- `DAGConsensus` engines track a tangle or block-lattice and override `observe`
+  to ingest vertices/blocks from gossip.
+
+To fork only fork-choice logic, reuse `chaincraft.consensus.pow.ForkAwareChain`
+directly inside your engine rather than reimplementing reorg handling.
 
 ### Core engines vs. teaching toys
 
@@ -645,20 +813,90 @@ Reusable building blocks also live in the family packages — e.g.
 `chaincraft.consensus.pow.ForkAwareChain` is the fork-choice/reorg engine that
 any longest- or heaviest-chain protocol can build on.
 
+## Extension Cookbook
+
+End-to-end recipes for the most common extension tasks.
+
+### A. New gossip protocol from scratch
+
+1. Subclass `SharedObject`.
+2. Choose `"message_type"` and action field names.
+3. Implement `is_valid` (signatures, timestamps, membership, …).
+4. Implement `add_message` — dispatch on `action`; keep handlers private.
+5. Return `False` from `is_merkelized()` unless you need digest sync.
+6. `node.add_shared_object(MyProtocol())`; `node.start()`.
+7. Publish with `node.create_shared_message({...})`.
+
+Reference implementations: `chaincraft/protocols/pubsub/topic.py` (simple gossip),
+`chaincraft/protocols/chat/chatgroup.py` (validation + pluggable policy).
+
+### B. New request–response protocol (sampling, queries)
+
+1. Subclass `SharedObject`; stub `is_valid` → `True` and `add_message` → `None`
+   if all logic is P2P-only.
+2. Implement `handle_p2p(addr, data)`; branch on `data["p2p"]`.
+3. Implement `_attach_node` and use `self.node.send_to_peer(addr, json.dumps(resp))`.
+4. Drive rounds from the main thread via public methods (e.g. `propose()`).
+
+Reference: `examples/slush_protocol.py`, `examples/snowflake_protocol.py`.
+
+### C. New consensus engine in an existing family
+
+1. Copy `chaincraft/consensus/gossip/relay.py` as a skeleton.
+2. Subclass the family base (`GossipConsensus`, `BFTConsensus`, …).
+3. Implement `propose` / `is_decided` / `decision`.
+4. Override `observe` (gossip) and/or `on_p2p` (sampling).
+5. Override `is_valid` to accept only your `"consensus"` tag.
+6. `@register_consensus`; import your module; `get_consensus_engine("your_name")`.
+7. Attach to node or use `BlockchainConfig(consensus_engine="your_name")`.
+
+### D. Extend blockchain assembly (ledger / fees)
+
+1. Subclass `LedgerModel` or `FeePolicy` in your package.
+2. Set a unique `name` class attribute.
+3. Register: `LEDGER_MODELS["my_ledger"] = MyLedgerModel` (or `FEE_POLICIES[...]`)
+   **before** `BlockchainConfig.validate()` / `build_blockchain()`.
+4. Reference by name in `BlockchainConfig(ledger_model="my_ledger", ...)`.
+
+For one-off experiments, instantiate `Blockchain(ledger, fee_policy, state, config)`
+directly without the registry.
+
+### E. Multi-object node (chain + ledger + mempool)
+
+Register multiple `SharedObject`s on one node. **Every** object must pass
+`is_valid` before **any** processes the message. Order matters: register the
+merkelized chain first, then ledger, then mempool so `frontier_state` from the
+chain reaches downstream objects on reorgs.
+
+```python
+node.add_shared_object(chain_object)
+node.add_shared_object(ledger_object)
+node.add_shared_object(mempool_object)
+```
+
+### F. Checklist before shipping
+
+- [ ] All messages JSON-serializable; stable field names documented.
+- [ ] `is_valid` rejects malformed messages without raising (return `False`).
+- [ ] Shared mutable state guarded with `threading.Lock` if called from outside
+      the listener thread.
+- [ ] Consensus engines: unique `name`; parameters validated in `__init__`.
+- [ ] Registry: module imported so decorators run before `get_*` lookup.
+- [ ] Tests: in-memory `observe()` / `add_message()` without a live network first;
+      then optional `ChaincraftNode` integration test.
+
 ## Examples
 
-| Protocol | Type | Path |
+| Kind | Path | Notes |
 |---|---|---|
-| Chatroom | Gossip (non-merkelized) | `examples/chatroom_protocol.py` |
-| Randomness Beacon | Gossip (merkelized) | `examples/randomness_beacon.py` |
-| Slush (toy) | Request-response | `examples/slush_protocol.py` |
-| Snowflake (toy) | Request-response | `examples/snowflake_protocol.py` |
-| Snowball (toy) | Request-response | `examples/snowball_protocol.py` |
-| Tendermint BFT (toy) | Gossip (non-merkelized) | `examples/tendermint_bft.py` |
-| Avalanche (full) | Core consensus engine (`gossip`) | `chaincraft/consensus/gossip/avalanche.py` |
-| Tendermint (full) | Core consensus engine (`bft`) | `chaincraft/consensus/bft/tendermint.py` |
-| Proof-of-Work (full) | Core consensus engine (`pow`) | `chaincraft/consensus/pow/proof_of_work.py` |
-| Randomness Beacon (full) | Core consensus engine (`pow`) | `chaincraft/consensus/pow/beacon.py` |
+| Core usage demos | `examples/blockchain_demo.py`, `beacon_demo.py`, `consensus_demo.py`, `chatgroup_demo.py` | Thin wrappers over `chaincraft.*` APIs |
+| Chat CLI | `examples/chatroom_cli.py` | Networked; uses legacy adapter |
+| Tendermint CLI | `examples/tendermint_cli.py` | Networked BFT walkthrough |
+| Legacy network adapters | `examples/chatroom_protocol.py`, `randomness_beacon.py`, `blockchain.py`, `tendermint_bft.py` | SharedObject glue; core logic in `chaincraft/` |
+| Toy consensus (teaching) | `examples/slush_protocol.py`, `snowflake_protocol.py`, `snowball_protocol.py` | Single-decree Avalanche steps |
+| Full consensus engines | `chaincraft/consensus/<family>/` | Registered, selectable by name |
+
+See `examples/EXAMPLES.md` for the full map.
 
 ### Gossip-path example (Chatroom)
 
