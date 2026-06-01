@@ -117,6 +117,18 @@ class RandomnessBeaconConsensus(PoWConsensus):
             except Exception:
                 pass
 
+    def observe_network(self, message: Any) -> None:
+        """Ingest legacy BEACON_BLOCK gossip without PoW re-check."""
+        data = message_data(message)
+        if not isinstance(data, dict):
+            return
+        if data.get("message_type") != MESSAGE_TYPE:
+            return
+        try:
+            self._beacon.ingest_dict_network(data)
+        except Exception:
+            pass
+
     def is_valid(self, message: Any) -> bool:
         data = message_data(message)
         if not isinstance(data, dict):

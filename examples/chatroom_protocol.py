@@ -1,84 +1,78 @@
-import time
+"""Legacy chatroom API — thin adapter over core :class:`chaincraft.protocols.ChatGroup`.
+
+The protocol logic lives in ``chaincraft.protocols``; this module keeps the
+original message field names (``CREATE_CHATROOM``, ``chatroom_name``, etc.) so
+``chatroom_cli.py`` and existing tests continue to work unchanged.
+"""
+
+from __future__ import annotations
+
 import json
+import time
 from typing import Callable, Dict, Optional
-import os
-import sys
 
-# Try to import from installed package first, fall back to direct imports
-try:
-    from chaincraft.core_objects import CoreSharedObject
-    from chaincraft.shared_message import SharedMessage
-    from chaincraft.crypto_primitives.sign import ECDSASignaturePrimitive
-except ImportError:
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-    if "chaincraft" in sys.modules:
-        del sys.modules["chaincraft"]
-    try:
-        from chaincraft.core_objects import CoreSharedObject
-    except ImportError:
-        from chaincraft.shared_object import SharedObject as CoreSharedObject
-    from chaincraft.shared_message import SharedMessage
-    from chaincraft.crypto_primitives.sign import ECDSASignaturePrimitive
+from chaincraft.protocols.chat.chatgroup import ChatGroup, _verify_signature
+from chaincraft.shared_message import SharedMessage
+from chaincraft.shared_object import SharedObject
+
+_LEGACY_ACTION = {
+    "CREATE_CHATROOM": "CREATE",
+    "REQUEST_JOIN": "JOIN",
+    "ACCEPT_MEMBER": "ACCEPT",
+    "POST_MESSAGE": "POST",
+}
 
 
-def verify_signature(public_key_pem: str, payload_str: str, signature_hex: str) -> bool:
-    """
-    Verifies the ECDSA signature for the given payload string.
-
-    - `public_key_pem`: The signer's public key in PEM format.
-    - `payload_str`: The JSON-serialized data (minus the signature field).
-    - `signature_hex`: The hex-encoded ECDSA signature.
-    """
-    try:
-        ecdsa = ECDSASignaturePrimitive()
-        ecdsa.load_pub_key_from_pem(public_key_pem)
-        signature_bytes = bytes.fromhex(signature_hex)
-        return ecdsa.verify(payload_str.encode("utf-8"), signature_bytes)
-    except Exception as e:
-        print(f"Signature verification error: {e}")
-        return False
+def _to_core(data: dict) -> dict:
+    out = dict(data)
+    if "chatroom_name" in out and "room" not in out:
+        out["room"] = out["chatroom_name"]
+    msg_type = out.get("message_type")
+    if msg_type in _LEGACY_ACTION:
+        out["action"] = _LEGACY_ACTION[msg_type]
+        out["message_type"] = "CHATGROUP"
+    if "requester_key_pem" in out and "member_key" not in out:
+        out["member_key"] = out["requester_key_pem"]
+    return out
 
 
-class ChatroomObject(CoreSharedObject):
-    """
-    A non-merkelized chatroom protocol.
-    Manages multiple chatrooms in memory:
+def _from_core(data: dict) -> dict:
+    """Restore legacy field names for callers/tests."""
+    out = dict(data)
+    action = out.get("action")
+    reverse = {v: k for k, v in _LEGACY_ACTION.items()}
+    if action in reverse:
+        out["message_type"] = reverse[action]
+    if "room" in out and "chatroom_name" not in out:
+        out["chatroom_name"] = out["room"]
+    if "member_key" in out and "requester_key_pem" not in out:
+        out["requester_key_pem"] = out["member_key"]
+    return out
 
-      chatrooms: {
-        <chatroom_name>: {
-          "admin": <public_key_pem of admin>,
-          "members": set of <public_key_pem>,
-          "messages": [
-              { "public_key_pem": str, "text": str, "timestamp": float }, ...
-          ]
-        },
-        ...
-      }
-    """
+
+class ChatroomObject(SharedObject):
+    """Non-merkelized chatroom — delegates to core ``ChatGroup`` (invite policy)."""
 
     def __init__(self, on_message_added: Optional[Callable[[str, dict], None]] = None):
-        self.chatrooms: Dict[str, Dict] = {}
+        self._group = ChatGroup(membership="invite", on_message=on_message_added)
         self.on_message_added = on_message_added
 
+    @property
+    def chatrooms(self) -> Dict[str, Dict]:
+        """Legacy-shaped room dict (``chatroom_name`` keys, legacy message types)."""
+        out: Dict[str, Dict] = {}
+        for name, room in self._group.rooms.items():
+            out[name] = {
+                "admin": room["admin"],
+                "members": set(room["members"]),
+                "messages": [_from_core(m) for m in room["messages"]],
+            }
+        return out
+
     def is_valid(self, message: SharedMessage) -> bool:
-        """
-        Validates the message:
-          1) Must be a dict with required fields:
-             ["message_type", "chatroom_name", "public_key_pem", "signature", "timestamp"].
-          2) Timestamp must be within ±15 seconds of local time.
-          3) We verify ECDSA signature with the included public_key_pem.
-          4) Additional logic based on message_type:
-             - CREATE_CHATROOM => name must be new
-             - REQUEST_JOIN    => chatroom must exist, user not already a member
-             - ACCEPT_MEMBER   => only the admin can accept
-             - POST_MESSAGE    => only an accepted member or the admin can post
-        """
         data = message.data
         if not isinstance(data, dict):
             return False
-
         required = [
             "message_type",
             "chatroom_name",
@@ -86,116 +80,36 @@ class ChatroomObject(CoreSharedObject):
             "signature",
             "timestamp",
         ]
-        for field in required:
-            if field not in data:
-                return False
-
-        # 1) Check timestamp ±15s
-        now = time.time()
-        msg_time = float(data["timestamp"])
-        if abs(now - msg_time) > 15:
+        if not all(k in data for k in required):
             return False
-
-        # 2) Allowed message types
+        if abs(float(data["timestamp"]) - time.time()) > 15:
+            return False
         msg_type = data["message_type"]
-        if msg_type not in (
-            "CREATE_CHATROOM",
-            "REQUEST_JOIN",
-            "ACCEPT_MEMBER",
-            "POST_MESSAGE",
+        if msg_type not in _LEGACY_ACTION:
+            return False
+        sig = data["signature"]
+        body = dict(data)
+        del body["signature"]
+        if not _verify_signature(
+            data["public_key_pem"], json.dumps(body, sort_keys=True), sig
         ):
             return False
-
-        # 3) Verify ECDSA signature
-        #    We'll create a JSON payload of all fields except "signature"
-        #    and compare to the public_key_pem field
-        signature_hex = data["signature"]
-        temp_dict = dict(data)
-        del temp_dict["signature"]
-        payload_str = json.dumps(temp_dict, sort_keys=True)
-
-        pub_key_pem = data["public_key_pem"]
-        if not verify_signature(pub_key_pem, payload_str, signature_hex):
-            return False
-
-        # 4) Additional logic checks per message type
-        cname = data["chatroom_name"]
+        core = _to_core(data)
+        cname = core["room"]
+        actor = core["public_key_pem"]
         if msg_type == "CREATE_CHATROOM":
-            # Must be a new name
-            if cname in self.chatrooms:
-                return False
-
-        elif msg_type == "REQUEST_JOIN":
-            # Chatroom must exist
-            if cname not in self.chatrooms:
-                return False
-            # The user shouldn't already be a member
-            if pub_key_pem in self.chatrooms[cname]["members"]:
-                return False
-
-        elif msg_type == "ACCEPT_MEMBER":
-            # Chatroom must exist
-            if cname not in self.chatrooms:
-                return False
-            # The admin alone can accept
-            if pub_key_pem != self.chatrooms[cname]["admin"]:
-                return False
-            # Must specify the "requester_key_pem" to accept
-            if "requester_key_pem" not in data:
-                return False
-            # The requester should not already be in members
-            if data["requester_key_pem"] in self.chatrooms[cname]["members"]:
-                return False
-
-        elif msg_type == "POST_MESSAGE":
-            # Must exist
-            if cname not in self.chatrooms:
-                return False
-            # Must be admin or an accepted member
-            admin_key = self.chatrooms[cname]["admin"]
-            members = self.chatrooms[cname]["members"]
-            if (pub_key_pem != admin_key) and (pub_key_pem not in members):
-                return False
-            # Must have a "text" field
-            if "text" not in data:
-                return False
-
-        return True
+            return cname not in self._group.rooms
+        if cname not in self._group.rooms:
+            return False
+        room = self._group.rooms[cname]
+        if msg_type == "REQUEST_JOIN":
+            return self._group.policy.may_join(room, actor, core)
+        if msg_type == "ACCEPT_MEMBER":
+            return actor == room.get("admin") and "member_key" in core
+        if msg_type == "POST_MESSAGE":
+            return "text" in data and self._group.policy.may_post(room, actor, core)
+        return False
 
     def add_message(self, message: SharedMessage, frontier_state=None) -> None:
-        data = message.data
-        msg_type = data["message_type"]
-        cname = data["chatroom_name"]
-
-        if msg_type == "CREATE_CHATROOM":
-            self.chatrooms[cname] = {
-                "admin": data["public_key_pem"],
-                "members": set(),
-                "messages": [],
-            }
-            self.chatrooms[cname]["messages"].append(data)
-            if self.on_message_added:
-                self.on_message_added(cname, data)
-
-        elif msg_type == "REQUEST_JOIN":
-            self.chatrooms[cname]["messages"].append(data)
-            if self.on_message_added:
-                self.on_message_added(cname, data)
-
-        elif msg_type == "ACCEPT_MEMBER":
-            self.chatrooms[cname]["members"].add(data["requester_key_pem"])
-            self.chatrooms[cname]["messages"].append(data)
-            if self.on_message_added:
-                self.on_message_added(cname, data)
-
-        elif msg_type == "POST_MESSAGE":
-            sig = data.get("signature")
-            posts = [
-                m
-                for m in self.chatrooms[cname]["messages"]
-                if m.get("message_type") == "POST_MESSAGE"
-            ]
-            if not any(m.get("signature") == sig for m in posts):
-                self.chatrooms[cname]["messages"].append(data)
-                if self.on_message_added:
-                    self.on_message_added(cname, data)
+        core_msg = SharedMessage(data=_to_core(message.data))
+        self._group.add_message(core_msg, frontier_state)

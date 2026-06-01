@@ -96,6 +96,26 @@ class RandomnessBeacon:
         block = BeaconBlock.from_dict(data)
         self._ingest(block)
 
+    def ingest_dict_network(self, data: Dict[str, Any]) -> None:
+        """Accept a gossiped block without re-verifying PoW (legacy networked beacon)."""
+        if data.get("consensus") == "beacon" and data.get("op") == "block":
+            data = data["block"]
+        block = BeaconBlock.from_dict(data)
+        if self.chain.contains(block.block_id):
+            return
+        if block.height == 0:
+            return
+        parent = block.prev_hash
+        if not self.chain.contains(parent):
+            raise BeaconError(f"unknown parent {parent!r}")
+        expected_height = self.chain.block_height(parent) + 1
+        if block.height != expected_height:
+            raise BeaconError(
+                f"height mismatch: expected {expected_height}, got {block.height}"
+            )
+        self._blocks[block.block_id] = block
+        self.last_result = self.chain.add_block(block.block_id, parent, work=1)
+
     # -- randomness output -------------------------------------------------
     def finalized_height(self) -> int:
         return self.chain.height - self.confirmations

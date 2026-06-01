@@ -144,9 +144,47 @@ class PowBlockSource(BlockSource):
         return self.pow.verify_proof(challenge, nonce, block.block_id)
 
 
+class LegacyBeaconPowSource(PowBlockSource):
+    """PoW for networked beacon demos: challenge = coinbase + prev_hash (legacy format)."""
+
+    name = "legacy_pow"
+
+    def __init__(self, coinbase: str = "0x0", difficulty: int = 256, difficulty_bits: Optional[int] = None):
+        super().__init__(difficulty=difficulty, difficulty_bits=difficulty_bits)
+        self.coinbase = coinbase
+
+    def produce(
+        self,
+        prev_hash: str,
+        height: int,
+        timestamp: Optional[int] = None,
+        **kwargs: Any,
+    ) -> BeaconBlock:
+        ts = int(time.time()) if timestamp is None else int(timestamp)
+        challenge = self.coinbase + prev_hash
+        nonce, block_id = self.pow.create_proof(challenge)
+        return BeaconBlock(
+            height,
+            prev_hash,
+            ts,
+            block_id,
+            extra={"nonce": nonce, "coinbaseAddress": self.coinbase},
+        )
+
+    def verify(self, block: BeaconBlock, prev_hash: str, height: int) -> bool:
+        if block.height != height or block.prev_hash != prev_hash:
+            return False
+        nonce = block.extra.get("nonce")
+        coinbase = block.extra.get("coinbaseAddress", self.coinbase)
+        if nonce is None:
+            return False
+        challenge = coinbase + prev_hash
+        return self.pow.verify_proof(challenge, nonce, block.block_id)
+
+
 BLOCK_SOURCES: Dict[str, Type[BlockSource]] = {
     cls.name: cls
-    for cls in (HashChainSource, SequentialSource, PowBlockSource)
+    for cls in (HashChainSource, SequentialSource, PowBlockSource, LegacyBeaconPowSource)
 }
 
 
