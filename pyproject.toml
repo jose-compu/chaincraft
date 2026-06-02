@@ -38,9 +38,21 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=6.0",
+    "pytest-cov>=4.0",
+    "hypothesis>=6.0",
     "flake8>=3.8.0",
     "black>=21.0.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["chaincraft"]
+
+[tool.coverage.report]
+fail_under = 50
 
 [project.urls]
 Homepage = "https://github.com/jio-gl/chaincraft"

@@ -338,26 +338,23 @@ class TestRandomnessBeacon(unittest.TestCase):
             block = beacon.mine_block()
             beacon.add_message(SharedMessage(data=block))
 
-        # Analyze randomness of the top hash
-        top_hash = beacon.blocks[-1]["blockHash"]
-        print(f"\nOriginal hash: {top_hash}")
+        # Aggregate bit balance across all mined blocks (single-hash checks flake in CI).
+        zeros_total = 0
+        ones_total = 0
+        print("\nRehashed block-hash bit balance:")
+        for i, block in enumerate(beacon.blocks[1:], start=1):
+            rehashed = hashlib.sha256(block["blockHash"].encode()).hexdigest()
+            bits = bin(int(rehashed, 16))[2:].zfill(256)
+            z, o = bits.count("0"), bits.count("1")
+            zeros_total += z
+            ones_total += o
+            print(f"  block {i}: {z} zeros, {o} ones ({z / (z + o) * 100:.1f}% zeros)")
 
-        # Hash the blockHash again
-        hashed_hash = hashlib.sha256(top_hash.encode()).hexdigest()
-        print(f"Hashed again: {hashed_hash}")
-
-        # Convert to binary and count bits
-        binary = bin(int(hashed_hash, 16))[2:].zfill(256)
-        zeros = binary.count("0")
-        ones = binary.count("1")
-        print(f"Binary representation length: {len(binary)}")
-        print(
-            f"Bit distribution: {zeros} zeros, {ones} ones ({zeros/(zeros+ones)*100:.2f}% zeros)"
-        )
-
-        # Should be approximately 50/50
-        self.assertGreater(zeros, 100)
-        self.assertGreater(ones, 100)
+        total = zeros_total + ones_total
+        zero_pct = (zeros_total / total) * 100
+        print(f"  overall: {zeros_total} zeros, {ones_total} ones ({zero_pct:.2f}% zeros)")
+        self.assertGreaterEqual(zero_pct, 42)
+        self.assertLessEqual(zero_pct, 58)
 
         # Values between 0-1
         for i in range(5):

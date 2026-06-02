@@ -1,5 +1,9 @@
 # examples/blockchain.py
+"""Networked SharedObject composition demo (Ledger + Mempool + PoW blocks).
 
+For the **core** configurable blockchain engine (ledger, fees, mempool policies
+without networking), use ``chaincraft.config`` — see ``blockchain_demo.py``.
+"""
 import hashlib
 import json
 import time

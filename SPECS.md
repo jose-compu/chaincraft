@@ -1,401 +1,195 @@
-# Chaincraft Protocol Implementation Specification v2
+# Chaincraft Protocol Implementation Specification v3 (0.6.0)
 
-This document describes SPECS v2 for implementing a protocol using Chaincraft.
-You write protocol logic only; Chaincraft handles networking, gossip,
-storage, peer management, and concurrency.
+You write protocol logic; Chaincraft handles networking, gossip, storage, peers,
+and concurrency.
 
-## Architecture Overview
+**0.6.0** adds pluggable, swap-by-name components on the unchanged `SharedObject` /
+`SharedMessage` substrate: ledger, fees, mempool, consensus (`chaincraft.consensus`),
+beacon, protocols, and assembly via `BlockchainConfig`.
+
+Two rules:
+
+1. **Select by name** — each family has a registry and `get_*` helper.
+2. **Fail fast** — `BlockchainConfig.validate()` and component constructors reject
+   impossible combinations (`ConfigError`, `ConsensusError`).
+
+## What to implement
+
+| Goal | Base class | Implement |
+|---|---|---|
+| Gossip protocol | `SharedObject` | `is_valid`, `add_message` |
+| P2P sampling (Slush-style) | `SharedObject` | stub gossip methods; `handle_p2p`, `_attach_node` |
+| Merkelized chain / DAG | `SharedObject` | above + `is_merkelized`→`True`, digest API, `gossip_object` |
+| Consensus engine | `GossipConsensus` / `BFTConsensus` / `PoWConsensus` / `DAGConsensus` | `propose`, `is_decided`, `decision`; usually `observe`, `is_valid` |
+| Chat with custom rules | `MembershipPolicy` | `may_create`, `may_join`, `may_post` → pass to `ChatGroup` |
+| Beacon block / randomness | `BlockSource` / `RandomnessDerivation` | `produce`+`verify` or `derive`; register or pass instance |
+| Ledger / fees | `LedgerModel` / `FeePolicy` | family methods; register in `LEDGER_MODELS` / `FEE_POLICIES` |
+
+**Register consensus:** `@register_consensus` on your class, import the module, then
+`get_consensus_engine("name")`. Skeleton: `chaincraft/consensus/gossip/relay.py`.
+
+## Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                         ChaincraftNode                        │
-│                                                               │
-│  ┌──────────┐  ┌──────────┐  ┌───────────────────┐            │
-│  │ Listener │  │  Gossip  │  │ Merkelized Sync   │            │
-│  │ (thread) │  │ (thread) │  │     (thread)      │            │
-│  └────┬─────┘  └──────────┘  └───────────────────┘            │
-│       │                                                       │
-│       ▼                                                       │
-│  handle_message()                                             │
-│       │                                                       │
-│       ├── Gossip path: SharedMessage                          │
-│       │    ├── _handle_shared_message()                       │
-│       │    │    ├── obj.is_valid(msg) for ALL objects         │
-│       │    │    └── linear pipeline per object (v2):          │
-│       │    │         obj.add_message(msg, frontier_state?)    │
-│       │    │         -> Optional[StateMemento]                │
-│       │    │         -> passed to next SharedObject           │
-│       │    └── _store_and_broadcast()                         │
-│       │         (store in DB, hash+dedupe, gossip to peers)   │
-│       │                                                       │
-│       └── P2P direct path: {"p2p": "..."}                     │
-│            └── obj.handle_p2p(addr, data) for EACH object     │
-│                 (NOT stored, NOT hashed, NOT gossiped)        │
-│                                                               │
-│  shared_objects: [YourProtocolObject, ...]                    │
-└───────────────────────────────────────────────────────────────┘
+ChaincraftNode
+  Listener / Gossip / Merkelized-sync threads
+       → handle_message()
+            Gossip: is_valid (ALL objects) → add_message pipeline → store+broadcast
+            P2P:    {"p2p": "..."} → handle_p2p (not stored, not gossiped)
+  shared_objects: [YourProtocol, ...]
 ```
 
-## Core Abstractions
+## SharedObject contract
 
-### SharedMessage
+**Required:** `is_valid(message) -> bool` (reject bad messages before state changes);
+`add_message(message, frontier_state=None)` (single gossip entry point — dispatch
+internally by `message_type` / `action`).
 
-A thin wrapper around any JSON-serializable data.
+**Optional:** `handle_p2p(addr, data)`; `_attach_node(node)` for `send_to_peer`;
+merkelized digest methods when `is_merkelized()` is `True` (defaults in base class
+return `False` / empty). Return `StateMemento` from `add_message` when downstream
+objects need your canonical frontier after a reorg.
 
-```python
-from chaincraft.shared_message import SharedMessage
+Publish gossip with `node.create_shared_message(data)` — not raw `broadcast()`.
 
-msg = SharedMessage(data={"message_type": "MY_VOTE", "value": 42})
-```
+**Multi-object nodes:** every object must pass `is_valid` before any processes the
+message. Register merkelized chain → ledger → mempool so `frontier_state` flows
+downstream.
 
-Messages are automatically serialized, hashed, deduplicated, stored, and
-gossiped by the node. You never call `broadcast()` directly for protocol
-messages; use `node.create_shared_message(data)` instead.
-
-### SharedObject
-
-The abstract base class for protocol logic. Every protocol implements
-one `SharedObject` subclass.
-
-```python
-from chaincraft.shared_object import SharedObject
-from chaincraft.state_memento import StateMemento
-
-class MyProtocolObject(SharedObject):
-    def is_valid(self, message: SharedMessage) -> bool: ...
-    def add_message(
-        self,
-        message: SharedMessage,
-        frontier_state: Optional[StateMemento] = None,
-    ) -> Optional[StateMemento]: ...
-    def emit_state_memento(self) -> StateMemento: ...
-    def get_state_digests(self) -> List[str]: ...
-    def is_merkelized(self) -> bool: ...
-    def get_latest_digest(self) -> str: ...
-    def has_digest(self, hash_digest: str) -> bool: ...
-    def is_valid_digest(self, hash_digest: str) -> bool: ...
-    def add_digest(self, hash_digest: str) -> bool: ...
-    def gossip_object(self, digest) -> List[SharedMessage]: ...
-    def get_messages_since_digest(self, digest: str) -> List[SharedMessage]: ...
-```
-
-### ChaincraftNode
-
-The runtime. Manages UDP sockets, peer lists, gossip, and message
-dispatch. Spawns its own daemon threads for listening, gossip, and
-merkelized sync. **You never spawn threads for protocol logic.**
-
-## Message Flow (Gossip Path)
-
-When a peer sends a message to this node:
-
-1. **Listener thread** receives the UDP datagram.
-2. `handle_message()` is called.
-3. `is_message_accepted()` checks schema constraints (optional).
-4. `_handle_shared_message()` runs:
-   - **Validation phase**: calls `obj.is_valid(msg)` on **every**
-     SharedObject in the node. If **any** returns `False`, the message
-     is rejected and the sender receives a strike (ban after 3 strikes).
-   - **Processing phase**: only if **all** objects validated, process
-     objects **sequentially** in registration order while passing an
-     optional `frontier_state` memento downstream.
-   - Then stores and broadcasts (gossips) the message to all peers.
-5. Your `add_message()` runs protocol state transitions.
-
-In v2, `frontier_state` carries canonical/frontier digests between
-SharedObjects so downstream objects can detect reorgs or canonical
-rewrites (including multi-block rewrites) and catch up.
-
-This two-phase design supports nodes with **multiple SharedObjects**
-that represent different facets of the same protocol. A typical example
-is a blockchain node with three objects:
-
-- A **merkelized Chain** (ordered blocks with digest-linked sync)
-- A **merkelized Ledger / UTXO set** (account balances; merkelized so
-  nodes can verify they share the same state snapshot)
-- A **non-merkelized Mempool** (backlog of unconfirmed transactions
-  pending inclusion in the next block; integrity not critical)
-
-A new message (e.g. a block) must be valid for all three before any
-of them process it. Once accepted, each object updates its own state
-sequentially: the Chain appends the block, the Ledger applies the
-balance changes, and the Mempool removes the now-confirmed transactions.
-
-When this node creates a message locally:
-
-1. `node.create_shared_message(data)` wraps data in a SharedMessage.
-2. Calls `obj.is_valid(msg)` on all SharedObjects.
-3. If all valid, processes shared objects in the same linear pipeline
-   (including optional `frontier_state` propagation).
-4. Broadcasts the message to all peers.
-5. Stores it in the node's DB (deduplicated by hash).
-
-## Message Flow (Direct / Request-Response Path)
-
-For protocols that need point-to-point query/response (not gossip),
-use the generic **P2P dispatch**. Any JSON message containing a `"p2p"`
-key is treated as an ephemeral direct message between two nodes. These
-messages are **not** stored, **not** hashed, **not** deduplicated, and
-**not** gossiped — they travel only between the sender and the receiver
-via UDP unicast (`send_to_peer`). Other nodes in the network never see
-them.
-
-The node's listener detects `"p2p"` in the parsed dict and calls
-`handle_p2p(addr, data)` on every SharedObject. This is the single
-public entry point for P2P messages — the same pattern as `add_message()`
-for gossip messages. Each SharedObject dispatches internally to private
-handlers based on the `"p2p"` value.
-
-### P2P message format
-
-```json
-{"p2p": "MY_PROTOCOL_QUERY", "field1": "value1", "field2": 42}
-```
-
-The `"p2p"` value identifies the message type. All payload fields are
-top-level siblings — no nested wrapper.
-
-### Implementing P2P in your SharedObject
-
-```python
-class MyObject(SharedObject):
-    MSG_QUERY = "MY_PROTOCOL_QUERY"
-    MSG_RESPONSE = "MY_PROTOCOL_RESPONSE"
-
-    def handle_p2p(self, addr, data):
-        p2p_type = data.get("p2p")
-        if p2p_type == self.MSG_QUERY:
-            self._handle_query(addr, data)
-        elif p2p_type == self.MSG_RESPONSE:
-            self._handle_response(addr, data)
-
-    def _handle_query(self, addr, data):
-        # Validate fields, update state, respond
-        resp = {"p2p": self.MSG_RESPONSE, "result": ...}
-        self.node.send_to_peer(addr, json.dumps(resp))
-
-    def _handle_response(self, addr, data):
-        # Collect response, advance protocol state
-        ...
-```
-
-Use `node.send_to_peer(peer, json_string)` for unicast.
-Use `node.broadcast(json_string)` only for protocol-level flooding
-(prefer `create_shared_message` for gossip-path messages).
-
-## Merkelized Objects
-
-For protocols that maintain a digest-linked structure of messages,
-implement the merkelized interface. The underlying structure does not
-have to be a linear chain — it can be a **DAG**, a **Merkle tree**, or
-any directed acyclic graph where entries reference parent digests.
-A blockchain (linear chain) is just one specific case.
-
-- `is_merkelized()` → return `True`
-- `get_latest_digest()` → return the hash of the current frontier
-  (tip of a chain, root of a tree, set of leaf digests in a DAG, etc.)
-- `has_digest(h)` / `is_valid_digest(h)` → structure membership checks
-- `gossip_object(digest)` → return messages a peer is missing since that digest
-- `get_messages_since_digest(digest)` → return messages reachable after a digest
-
-The node's merkelized sync thread periodically broadcasts
-`REQUEST_SHARED_OBJECT_UPDATE` to peers. When a peer receives this,
-`_handle_shared_object_update_request()` calls `gossip_object()` on
-the matching SharedObject and sends the missing messages back.
-
-## Non-Merkelized Objects
-
-Not every shared data structure needs digest-linked sync. Objects where
-messages are independent and order does not matter — such as a chatroom,
-a blockchain mempool (unconfirmed transactions), or consensus votes —
-are typically non-merkelized. They rely on the node's built-in gossip
-and hash-based deduplication, which is sufficient.
-
-For these objects, return `False` from `is_merkelized()` and stub the
-digest methods:
-
-```python
-def is_merkelized(self) -> bool:
-    return False
-
-def get_latest_digest(self) -> str:
-    return ""
-
-def has_digest(self, hash_digest: str) -> bool:
-    return False
-
-def is_valid_digest(self, hash_digest: str) -> bool:
-    return False
-
-def add_digest(self, hash_digest: str) -> bool:
-    return False
-
-def gossip_object(self, digest) -> List[SharedMessage]:
-    return []
-
-def get_messages_since_digest(self, digest: str) -> List[SharedMessage]:
-    return []
-```
-
-## Implementing a Protocol: Step by Step
-
-### 1. Define your SharedObject subclass
-
-Focus on two methods:
-
-- **`is_valid(msg)`**: Return `True` if this message is well-formed and
-  the state transition it represents is legal. This is your validator.
-- **`add_message(msg, frontier_state=None)`**: The single public entry
-  point from the node. Apply the state transition here. Dispatch
-  internally to private handlers based on message type or content — do
-  not add more public handler methods. Legacy objects may still use
-  `add_message(msg)` without `frontier_state`. For example:
-
-```python
-def add_message(self, message, frontier_state=None):
-    data = message.data
-    if data["blockHeight"] == len(self.blocks) - 1:
-        self._handle_replacement(data)
-    else:
-        self._handle_new_block(data)
-```
-
-All protocol-specific routing lives inside `add_message()`, delegating
-to `_private_methods()` as needed.
-
-### 2. Register it with the node
+## Getting started
 
 ```python
 from chaincraft.node import ChaincraftNode
+from chaincraft.shared_object import SharedObject
 
-node = ChaincraftNode(port=9000, local_discovery=True)
-protocol = MyProtocolObject(node)
-node.add_shared_object(protocol)
+class MyProtocol(SharedObject):
+    def is_valid(self, message): ...
+    def add_message(self, message, frontier_state=None): ...
+
+node = ChaincraftNode(port=9000)
+node.add_shared_object(MyProtocol())
 node.start()
-```
-
-You may also wrap this pattern in a protocol-specific node subclass
-that inherits `ChaincraftNode` and auto-registers the protocol object
-(for example, `SnowballNode` in `examples/snowball_protocol.py`).
-
-### 3. Initiate protocol actions
-
-```python
 node.create_shared_message({"message_type": "MY_ACTION", "value": 42})
 ```
 
-This validates, stores, and gossips in one call. If your SharedObject
-rejects the message, a `SharedObjectException` is raised.
+P2P messages: top-level `"p2p"` key, handled in `handle_p2p`; respond with
+`self.node.send_to_peer(addr, json.dumps({...}))`.
 
-### 4. React to incoming messages
+Protect shared state with `threading.Lock` if methods are called outside the
+listener thread. Do not spawn threads or manage sockets yourself.
 
-The node provides **two public entry points** into your SharedObject,
-both called from the listener thread:
+## Pluggable blockchain (0.6.0)
 
-- **`add_message(msg, frontier_state=None)`** — for gossip-path messages
-  (stored, deduplicated, broadcast). Dispatch to `_private_methods()`
-  internally.
-- **`handle_p2p(addr, data)`** — for ephemeral point-to-point messages
-  (not stored, not gossiped). Dispatch to `_private_methods()` internally.
-
-You do not poll, sleep, or spawn threads. Your handlers run synchronously
-in the listener thread.
-
-### 5. Expose state to callers
-
-Add getters on your SharedObject. Callers poll or use callbacks:
-
-```python
-# Polling
-while protocol.get_accepted() is None:
-    time.sleep(0.1)
-
-# Callback (set in constructor)
-protocol = MyProtocolObject(node, on_decided=my_callback)
-```
-
-## Thread Safety
-
-`add_message()` and `handle_p2p()` run in the node's listener thread.
-If your protocol also exposes methods called from outside (e.g.
-`propose()` from the main thread, or a callback wired to the UI),
-you share state between two threads. Protect that shared state with a
-`threading.Lock`. See `SlushObject._lock` and `SnowflakeObject._lock`
-for the pattern.
-
-## What You Do NOT Do
-
-- **No threads.** ChaincraftNode manages all concurrency.
-- **No sockets.** Use `node.send_to_peer()` or `node.create_shared_message()`.
-- **No gossip logic.** The node gossips all stored messages automatically.
-- **No deduplication.** Messages are hashed and deduplicated by the node.
-- **No peer management.** Use `node.connect_to_peer()` and `local_discovery`.
-
-## Examples
-
-| Protocol | Type | Path |
+| Family | Module | Names (examples) |
 |---|---|---|
-| Chatroom | Gossip (non-merkelized) | `examples/chatroom_protocol.py` |
-| Randomness Beacon | Gossip (merkelized) | `examples/randomness_beacon.py` |
-| Slush | Request-response | `examples/slush_protocol.py` |
-| Snowflake | Request-response | `examples/snowflake_protocol.py` |
-| Snowball | Request-response | `examples/snowball_protocol.py` |
-| Tendermint BFT | Gossip (non-merkelized) | `examples/tendermint_bft.py` |
-
-### Gossip-path example (Chatroom)
+| Ledger | `chaincraft.ledger` | `balance`, `utxo` |
+| Fees | `chaincraft.fees` | `highest_first`, `median`, `eip1559` |
+| Payload pricing | `chaincraft.fees.payload` | `none`, `per_byte`, `flat`, … |
+| Consensus | `chaincraft.consensus` | `relay`, `avalanche`, `tendermint`, `pbft`, `pow`, `beacon`, … |
+| Protocols | `chaincraft.protocols` | `ChatGroup`, `TopicPubSub`, `CRDTKeyValue` |
 
 ```python
-class ChatroomObject(SharedObject):
-    def is_valid(self, message):
-        # Verify signature, check membership, validate timestamp
-        ...
-        return True
+from chaincraft import BlockchainConfig, build_blockchain, BlockchainBuilder
 
-    def add_message(self, message, frontier_state=None):
-        # Apply: create room, accept member, store post
-        # Optionally notify UI via callback
-        if self.on_message_added:
-            self.on_message_added(chatroom_name, data)
+config = BlockchainConfig(ledger_model="balance", fee_policy="highest_first",
+                          genesis_allocations={"alice": 1_000})
+chain = build_blockchain(config)
+
+# With consensus on a node:
+config = BlockchainConfig(consensus_engine="tendermint", fork_choice="bft_finality",
+                          consensus_kwargs={"validator_id": "v0",
+                                            "validators": ["v0","v1","v2","v3"]})
+chain = BlockchainBuilder(config).wire_node(node)
+if getattr(node, "consensus_engine", None):
+    node.add_shared_object(node.consensus_engine)
 ```
 
-### Request-response example (Slush)
+`Transaction.data` is opaque bytes (not executed). Price via `payload_pricing`;
+cap with `max_payload_bytes`. Validation rejects unknown names, bad limits, and
+incompatible pairings (`ConfigError`); experimental combos emit
+`ExperimentalConfigWarning` / `UnstableConsensusWarning`.
+
+## Randomness beacon
+
+No ledger. Block ids from a `BlockSource`; random floats from a `RandomnessDerivation`.
 
 ```python
-class SlushObject(SharedObject):
-    MSG_QUERY = "SLUSH_QUERY"
-    MSG_RESPONSE = "SLUSH_RESPONSE"
-
-    def propose(self, color):
-        self._send_round(1)
-
-    def handle_p2p(self, addr, data):
-        p2p_type = data.get("p2p")
-        if p2p_type == self.MSG_QUERY:
-            self._handle_query(addr, data)
-        elif p2p_type == self.MSG_RESPONSE:
-            self._handle_response(addr, data)
-
-    def _handle_query(self, addr, data):
-        resp = {"p2p": self.MSG_RESPONSE, "r": data["r"], "col": ...}
-        self.node.send_to_peer(addr, json.dumps(resp))
-
-    def _handle_response(self, addr, data):
-        # Collect, process round, advance or accept
-        if r < self.m:
-            self._send_round(r + 1)
-        else:
-            self._accepted = self._color
-
-    # is_valid / add_message stub (not used for P2P-only protocols)
+from chaincraft.beacon import build_beacon
+beacon = build_beacon(block_source="hash_chain", randomness="rehash")
+beacon.append()
+beacon.random_float()
 ```
 
-## Node Lifecycle
+Extend: subclass `BlockSource` (`produce`, `verify`) or `RandomnessDerivation`
+(`derive`); register in `BLOCK_SOURCES` / `RANDOMNESS_DERIVATIONS` or pass instances.
+Gossip adapter: `@register_consensus` subclass of `PoWConsensus` — see
+`chaincraft/consensus/pow/beacon.py`.
+
+## Decentralized protocols
+
+Built-in: `ChatGroup` (membership: `open`, `invite`, `admin_approval`), `TopicPubSub`,
+`CRDTKeyValue`. Extend chat rules via `MembershipPolicy`; extend actions by
+subclassing the protocol `SharedObject`. Demos: `examples/*_demo.py`; legacy
+network adapters: `examples/chatroom_protocol.py`.
+
+## Consensus engines
+
+Families: `gossip`, `pow`, `bft`, `dag`. Every engine implements:
+
+| Method | Role |
+|---|---|
+| `propose(value)` | Drive toward a decision |
+| `is_decided()` / `decision()` | Query outcome |
+| `observe(message)` | Handle gossip (via default `add_message`) |
+| `on_p2p(addr, data)` | Direct sampling, if needed |
+| `is_valid(message)` | Filter foreign traffic (tag with `"consensus": self.name`) |
+
+Engines are `SharedObject` adapters: `node.add_shared_object(engine)`.
+`engine.broadcast(data)` → `node.create_shared_message(data)`.
+
+```python
+from chaincraft.consensus import register_consensus, get_consensus_engine
+from chaincraft.consensus.gossip import GossipConsensus
+from chaincraft.consensus.base import message_data, ConsensusError
+
+@register_consensus
+class MyGossip(GossipConsensus):
+    name = "my_gossip"
+    def __init__(self, threshold=3, **kwargs):
+        super().__init__(**kwargs)
+        self.threshold = threshold
+        self._decision = None
+    def propose(self, value):
+        self.broadcast({"consensus": self.name, "value": value})
+    def observe(self, message):
+        data = message_data(message)
+        if isinstance(data, dict) and data.get("consensus") == self.name:
+            self._decision = data.get("value")
+    def is_decided(self): return self._decision is not None
+    def decision(self): return self._decision
+```
+
+Fork an existing engine: subclass it, override decision logic, register a **new**
+`name`. PoW/DAG engines typically reuse `chaincraft.consensus.pow.ForkAwareChain`.
+
+| Engine | Family | Module |
+|---|---|---|
+| relay, avalanche, hashgraph | gossip | `consensus/gossip/` |
+| tendermint, pbft, hotstuff | bft | `consensus/bft/` |
+| pow, beacon, vdf | pow | `consensus/pow/` |
+| nano_lattice, dagcoin | dag | `consensus/dag/` |
+
+Teaching toys (single-decree, self-contained): `examples/slush_protocol.py`,
+`snowflake_protocol.py`, `snowball_protocol.py`.
+
+## Examples and node lifecycle
+
+See `examples/EXAMPLES.md` for demos, CLIs, legacy adapters, and toys.
 
 ```python
 node = ChaincraftNode(port=9000)
 node.add_shared_object(my_protocol)
-node.start()                            # Binds socket, starts threads
-node.connect_to_peer("127.0.0.1", 9001) # Add peers
-# ... protocol runs via message handlers ...
-node.close()                            # Stops threads, closes socket
+node.start()
+node.connect_to_peer("127.0.0.1", 9001)
+node.close()
 ```
