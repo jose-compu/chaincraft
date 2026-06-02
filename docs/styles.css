@@ -1,0 +1,452 @@
+/* Chaincraft promo site — block/voxel aesthetic aligned with logo */
+
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+:root {
+  --bg: #0d0f12;
+  --bg-elevated: #161a20;
+  --bg-card: #1c2229;
+  --stone: #8b939e;
+  --grass: #6ecf4a;
+  --grass-dim: #4a9e32;
+  --dirt: #8b6914;
+  --accent: #7ee05a;
+  --text: #e8ecef;
+  --text-muted: #9aa3ad;
+  --border: #2a323c;
+  --code-bg: #0a0c0e;
+  --pixel-shadow: 4px 4px 0 #000;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--bg);
+  background-image:
+    linear-gradient(rgba(110, 207, 74, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(110, 207, 74, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Header */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 2rem;
+  background: rgba(13, 15, 18, 0.92);
+  border-bottom: 3px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+
+.logo-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+}
+
+.logo-link:hover {
+  text-decoration: none;
+}
+
+.logo-link img {
+  height: 40px;
+  width: auto;
+  image-rendering: pixelated;
+}
+
+.logo-text {
+  font-family: "Press Start 2P", cursive;
+  font-size: 0.65rem;
+  color: var(--grass);
+  letter-spacing: 0.05em;
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.85rem;
+}
+
+.site-nav a {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.site-nav a:hover {
+  color: var(--accent);
+}
+
+/* Hero */
+.hero {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 4rem 2rem 5rem;
+  text-align: center;
+}
+
+.hero-logo {
+  width: min(280px, 70vw);
+  margin: 0 auto 2rem;
+  image-rendering: pixelated;
+  filter: drop-shadow(8px 8px 0 rgba(0, 0, 0, 0.5));
+}
+
+.hero h1 {
+  font-family: "Press Start 2P", cursive;
+  font-size: clamp(1rem, 3.5vw, 1.35rem);
+  line-height: 1.8;
+  color: var(--text);
+  margin: 0 0 1.5rem;
+}
+
+.hero .tagline {
+  font-family: "VT323", monospace;
+  font-size: 1.75rem;
+  color: var(--text-muted);
+  max-width: 640px;
+  margin: 0 auto 2rem;
+}
+
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.btn {
+  display: inline-block;
+  padding: 0.85rem 1.5rem;
+  font-family: "Press Start 2P", cursive;
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  border: 3px solid var(--grass);
+  background: var(--grass-dim);
+  color: #0d0f12;
+  box-shadow: var(--pixel-shadow);
+  text-decoration: none;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+  text-decoration: none;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--grass);
+}
+
+/* Sections */
+section {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 4rem 2rem;
+}
+
+section h2 {
+  font-family: "Press Start 2P", cursive;
+  font-size: clamp(0.75rem, 2.5vw, 0.95rem);
+  line-height: 1.7;
+  margin: 0 0 0.5rem;
+  color: var(--grass);
+}
+
+section .section-lead {
+  font-family: "VT323", monospace;
+  font-size: 1.5rem;
+  color: var(--text-muted);
+  margin: 0 0 2.5rem;
+  max-width: 720px;
+}
+
+/* Why cards — three-column feature grid */
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.why-card {
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+  padding: 1.75rem;
+  box-shadow: var(--pixel-shadow);
+}
+
+.why-card h3 {
+  font-family: "Press Start 2P", cursive;
+  font-size: 0.6rem;
+  line-height: 1.6;
+  margin: 0 0 1rem;
+  color: var(--accent);
+}
+
+.why-card p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* Modular stack */
+.module-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin: 1.5rem 0;
+}
+
+.module-table th,
+.module-table td {
+  border: 2px solid var(--border);
+  padding: 0.75rem 1rem;
+  text-align: left;
+}
+
+.module-table th {
+  background: var(--bg-elevated);
+  font-family: "Press Start 2P", cursive;
+  font-size: 0.5rem;
+  color: var(--grass);
+}
+
+.module-table code {
+  font-size: 0.82rem;
+  color: var(--accent);
+}
+
+/* Architecture diagram */
+.diagram-wrap {
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+  padding: 2rem;
+  margin: 2rem 0;
+  overflow-x: auto;
+  box-shadow: var(--pixel-shadow);
+}
+
+.diagram-wrap svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* Hello World — Substrate-style steps */
+.hello-steps {
+  counter-reset: step;
+}
+
+.hello-step {
+  position: relative;
+  margin-bottom: 3rem;
+  padding-left: 3.5rem;
+  border-left: 4px solid var(--grass-dim);
+}
+
+.hello-step::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: -1.35rem;
+  top: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Press Start 2P", cursive;
+  font-size: 0.55rem;
+  background: var(--grass);
+  color: #0d0f12;
+  border: 3px solid #000;
+}
+
+.hello-step h3 {
+  font-family: "VT323", monospace;
+  font-size: 1.75rem;
+  margin: 0 0 0.75rem;
+  color: var(--text);
+}
+
+.hello-step p {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+}
+
+pre,
+.code-block {
+  background: var(--code-bg);
+  border: 2px solid var(--border);
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+  box-shadow: inset 0 0 0 1px rgba(110, 207, 74, 0.1);
+}
+
+pre.code-block code.hljs {
+  display: block;
+  padding: 0;
+  background: transparent;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* Highlight.js — tuned to Chaincraft palette */
+.hljs {
+  color: var(--text);
+  background: transparent;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--stone);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in {
+  color: var(--grass);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-bullet {
+  color: #9cdcfe;
+}
+
+.hljs-number,
+.hljs-literal {
+  color: #d19a66;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-function .hljs-title {
+  color: var(--accent);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params {
+  color: #e8ecef;
+}
+
+.hljs-meta,
+.hljs-meta .hljs-keyword {
+  color: var(--dirt);
+}
+
+code {
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.note {
+  font-size: 0.85rem;
+  color: var(--stone);
+  border-left: 3px solid var(--dirt);
+  padding-left: 1rem;
+  margin: 1rem 0;
+}
+
+/* Consensus pills */
+.pill-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.pill {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  color: var(--text-muted);
+}
+
+.pill-gossip { border-color: #5b8def; }
+.pill-bft { border-color: #ef5b8d; }
+.pill-pow { border-color: var(--dirt); }
+.pill-dag { border-color: #9b5bef; }
+
+/* Footer */
+.site-footer {
+  border-top: 3px solid var(--border);
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.site-footer img {
+  height: 48px;
+  margin-bottom: 1rem;
+  opacity: 0.9;
+  image-rendering: pixelated;
+}
+
+.alt-bg {
+  background: var(--bg-elevated);
+  border-top: 3px solid var(--border);
+  border-bottom: 3px solid var(--border);
+}
+
+@media (max-width: 640px) {
+  .site-header {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .hello-step {
+    padding-left: 1rem;
+    border-left-width: 3px;
+  }
+
+  .hello-step::before {
+    position: static;
+    margin-bottom: 0.75rem;
+  }
+}

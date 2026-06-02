@@ -1,5 +1,7 @@
 # Hello World Tutorial
 
+> Interactive version with diagrams: open [`index.html`](index.html) in this folder (or serve with `python -m http.server` from `docs/`).
+
 This tutorial demonstrates how to run a simple "Hello World" example using Chaincraft nodes.
 
 ## Chaincraft CLI Parameters

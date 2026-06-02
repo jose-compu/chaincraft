@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Chaincraft — a Python framework for building decentralized protocols. You write protocol logic; Chaincraft handles gossip, peers, and sync.">
+  <title>Chaincraft — Building blocks for decentralized protocols</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="chaincraft-logo.png" type="image/png">
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo-link" href="#top">
+      <img src="chaincraft-logo-text.png" alt="Chaincraft" width="160" height="40">
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="#why">Why</a>
+      <a href="#stack">Modular stack</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#hello">Hello World</a>
+      <a href="#start">Get started</a>
+      <a href="https://github.com/jio-gl/chaincraft" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <header class="hero">
+      <img class="hero-logo" src="chaincraft-logo-full.png" alt="Chaincraft voxel chain logo" width="280" height="280">
+      <h1>Building blocks<br>for decentralized protocols</h1>
+      <p class="tagline">
+        Open-source Python toolkit for gossip networks, consensus experiments,
+        and modular blockchains — you implement <code>SharedObject</code> logic;
+        the node handles transport, deduplication, and sync.
+      </p>
+      <div class="hero-cta">
+        <a class="btn" href="#hello">Hello World</a>
+        <a class="btn btn-secondary" href="https://github.com/jio-gl/chaincraft/blob/main/SPECS.md" target="_blank" rel="noopener">Read SPECS</a>
+      </div>
+    </header>
+
+    <section id="why" aria-labelledby="why-heading">
+      <h2 id="why-heading">Why Chaincraft?</h2>
+      <p class="section-lead">
+        Chaincraft separates <em>protocol rules</em> from <em>network plumbing</em>
+        so researchers and students can prototype gossip networks, consensus, and
+        modular blockchains — swap ledgers, fee policies, and engines by name.
+      </p>
+      <div class="why-grid">
+        <article class="why-card">
+          <h3>Open</h3>
+          <p>
+            Peers discover each other over UDP, gossip <code>SharedMessage</code>
+            payloads, and run your validators in a linear pipeline — no central
+            broker required for teaching labs.
+          </p>
+        </article>
+        <article class="why-card">
+          <h3>Verifiable</h3>
+          <p>
+            Messages are hashed and deduplicated at the node. Merkelized
+            <code>SharedObject</code>s expose digests so nodes can request missing
+            history and detect canonical reorgs.
+          </p>
+        </article>
+        <article class="why-card">
+          <h3>Composable</h3>
+          <p>
+            In 0.6.0, ledgers, fee markets, mempools, consensus engines, beacons,
+            and chat/pub-sub protocols register by name — assemble a chain with
+            <code>BlockchainConfig</code>, not a fork of the whole repo.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="stack" class="alt-bg" aria-labelledby="stack-heading">
+      <h2 id="stack-heading">Modular protocol stack (0.6.0)</h2>
+      <p class="section-lead">
+        Pick components from registries; invalid combinations fail at
+        <code>validate()</code> time with a clear error.
+      </p>
+      <p class="note">
+        Requires the <code>release/0.6.0</code> branch (not yet on PyPI 0.5.x):
+        <code>git checkout release/0.6.0 &amp;&amp; pip install -e ".[dev]"</code>
+      </p>
+      <table class="module-table">
+        <thead>
+          <tr>
+            <th>Family</th>
+            <th>Module</th>
+            <th>Select by name</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Ledger</td>
+            <td><code>chaincraft.ledger</code></td>
+            <td><code>balance</code>, <code>utxo</code></td>
+          </tr>
+          <tr>
+            <td>Fees</td>
+            <td><code>chaincraft.fees</code></td>
+            <td><code>highest_first</code>, <code>median</code>, <code>eip1559</code></td>
+          </tr>
+          <tr>
+            <td>Consensus</td>
+            <td><code>chaincraft.consensus</code></td>
+            <td><code>relay</code>, <code>avalanche</code>, <code>tendermint</code>, <code>pbft</code>, <code>pow</code>, <code>beacon</code>, …</td>
+          </tr>
+          <tr>
+            <td>Protocols</td>
+            <td><code>chaincraft.protocols</code></td>
+            <td><code>ChatGroup</code>, <code>TopicPubSub</code>, <code>CRDTKeyValue</code></td>
+          </tr>
+          <tr>
+            <td>Beacon</td>
+            <td><code>chaincraft.beacon</code></td>
+            <td>block sources + randomness derivations (no ledger)</td>
+          </tr>
+          <tr>
+            <td>Assembly</td>
+            <td><code>chaincraft.config</code></td>
+            <td><code>BlockchainConfig</code> + <code>build_blockchain()</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>Consensus families</strong> (all implement <code>propose</code>, <code>is_decided</code>, <code>decision</code>):</p>
+      <div class="pill-grid">
+        <span class="pill pill-gossip">gossip: relay, avalanche, hashgraph</span>
+        <span class="pill pill-bft">bft: tendermint, pbft, hotstuff</span>
+        <span class="pill pill-pow">pow: pow, beacon, vdf</span>
+        <span class="pill pill-dag">dag: nano_lattice, dagcoin</span>
+      </div>
+      <pre class="code-block"><code class="language-python">from chaincraft import BlockchainConfig, build_blockchain
+
+config = BlockchainConfig(
+    ledger_model="balance",
+    fee_policy="highest_first",
+    genesis_allocations={"alice": 1000},
+).validate()
+chain = build_blockchain(config)</code></pre>
+    </section>
+
+    <section id="architecture" aria-labelledby="arch-heading">
+      <h2 id="arch-heading">How a node works</h2>
+      <p class="section-lead">
+        One <code>ChaincraftNode</code> runs listener, gossip, and merkelized-sync
+        threads. Your code never opens sockets or spawns protocol threads.
+      </p>
+      <div class="diagram-wrap" role="img" aria-label="Chaincraft node architecture diagram">
+        <svg viewBox="0 0 720 420" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#6ecf4a"/>
+            </marker>
+          </defs>
+          <rect x="180" y="12" width="360" height="48" rx="4" fill="#1c2229" stroke="#6ecf4a" stroke-width="2"/>
+          <text x="360" y="42" fill="#e8ecef" text-anchor="middle">ChaincraftNode</text>
+          <rect x="40" y="90" width="120" height="36" fill="#161a20" stroke="#5b8def" stroke-width="2"/>
+          <text x="100" y="112" fill="#9aa3ad" text-anchor="middle">Listener</text>
+          <rect x="300" y="90" width="120" height="36" fill="#161a20" stroke="#5b8def" stroke-width="2"/>
+          <text x="360" y="112" fill="#9aa3ad" text-anchor="middle">Gossip</text>
+          <rect x="560" y="90" width="120" height="36" fill="#161a20" stroke="#5b8def" stroke-width="2"/>
+          <text x="620" y="112" fill="#9aa3ad" text-anchor="middle">Merkle sync</text>
+          <line x1="100" y1="126" x2="100" y2="160" stroke="#6ecf4a" marker-end="url(#arrow)"/>
+          <line x1="360" y1="126" x2="360" y2="160" stroke="#6ecf4a" marker-end="url(#arrow)"/>
+          <line x1="620" y1="126" x2="620" y2="160" stroke="#6ecf4a" marker-end="url(#arrow)"/>
+          <rect x="220" y="160" width="280" height="40" rx="4" fill="#1c2229" stroke="#8b939e" stroke-width="2"/>
+          <text x="360" y="185" fill="#e8ecef" text-anchor="middle">handle_message()</text>
+          <rect x="60" y="230" width="260" height="72" rx="4" fill="#0a0c0e" stroke="#6ecf4a" stroke-width="2"/>
+          <text x="190" y="252" fill="#6ecf4a" text-anchor="middle">Gossip path</text>
+          <text x="190" y="272" fill="#9aa3ad" text-anchor="middle" font-size="9">is_valid → add_message → store</text>
+          <text x="190" y="288" fill="#9aa3ad" text-anchor="middle" font-size="9">+ broadcast to peers</text>
+          <rect x="400" y="230" width="260" height="72" rx="4" fill="#0a0c0e" stroke="#ef5b8d" stroke-width="2"/>
+          <text x="530" y="252" fill="#ef5b8d" text-anchor="middle">P2P path</text>
+          <text x="530" y="272" fill="#9aa3ad" text-anchor="middle" font-size="9">{"p2p": "..."} only</text>
+          <text x="530" y="288" fill="#9aa3ad" text-anchor="middle" font-size="9">handle_p2p — not gossiped</text>
+          <line x1="190" y1="302" x2="190" y2="330" stroke="#6ecf4a" marker-end="url(#arrow)"/>
+          <line x1="530" y1="302" x2="530" y2="330" stroke="#ef5b8d" marker-end="url(#arrow)"/>
+          <rect x="120" y="330" width="480" height="70" rx="4" fill="#1c2229" stroke="#6ecf4a" stroke-width="2"/>
+          <text x="360" y="358" fill="#e8ecef" text-anchor="middle">shared_objects: [ YourProtocol, Ledger, Mempool, … ]</text>
+          <text x="360" y="378" fill="#9aa3ad" text-anchor="middle" font-size="9">Every object must pass is_valid before any processes the message</text>
+        </svg>
+      </div>
+      <p class="note">
+        <strong>Multi-object nodes:</strong> register merkelized chain → ledger →
+        mempool so <code>frontier_state</code> (StateMemento) flows downstream on reorgs.
+      </p>
+    </section>
+
+    <section id="hello" class="alt-bg" aria-labelledby="hello-heading">
+      <h2 id="hello-heading">Hello World</h2>
+      <p class="section-lead">
+        A Substrate-style walkthrough: from zero to a gossiped message across
+        three peers. No custom consensus yet — just the substrate every protocol
+        builds on.
+      </p>
+
+      <div class="hello-steps">
+        <article class="hello-step">
+          <h3>Install Chaincraft</h3>
+          <p>Python 3.8+ and the <code>cryptography</code> package.</p>
+          <pre class="code-block"><code class="language-bash"># PyPI (0.5.x): node, SharedObject, examples
+pip install chaincraft
+
+# From source (Hello World + CLI):
+git clone https://github.com/jio-gl/chaincraft.git
+cd chaincraft &amp;&amp; pip install -e ".[dev]"
+
+# Modular stack snippets below need release/0.6.0:
+git checkout release/0.6.0 &amp;&amp; pip install -e ".[dev]"</code></pre>
+        </article>
+
+        <article class="hello-step">
+          <h3>What you implement vs what the node does</h3>
+          <p>
+            For a minimal app you subclass <code>SharedObject</code> with
+            <code>is_valid</code> and <code>add_message</code>. The node wraps your
+            dict in a <code>SharedMessage</code>, hashes it, stores it, and gossips
+            to peers. The runnable <code>hello_node.py</code> script (next section)
+            defines <code>HelloObject</code> and wires it to a node.
+          </p>
+        </article>
+
+        <article class="hello-step">
+          <h3>Start three nodes (three terminals)</h3>
+          <p>
+            Use the CLI with in-memory storage and debug logging. Each node
+            connects to the previous one as a seed peer — a small line topology.
+          </p>
+          <pre class="code-block"><code class="language-bash"># Terminal 1 — bootstrap
+chaincraft-cli -p 21001 -d -m
+
+# Terminal 2 — discovers via seed
+chaincraft-cli -p 21002 -s 127.0.0.1:21001 -d -m
+
+# Terminal 3
+chaincraft-cli -p 21003 -s 127.0.0.1:21002 -d -m</code></pre>
+          <p class="note">
+            Flags: <code>-d</code> debug, <code>-m</code> memory (non-persistent),
+            <code>-s HOST:PORT</code> seed peer, <code>-p</code> port.
+          </p>
+        </article>
+
+        <article class="hello-step">
+          <h3>Send your first gossiped message</h3>
+          <p>
+            In terminal 1, type any line and press Enter. The CLI passes your
+            input as the message <em>payload</em> (a string) to
+            <code>create_shared_message</code>; peers receive the same hash after gossip.
+          </p>
+          <pre class="code-block"><code>Hello, Chaincraft!</code></pre>
+          <p class="note">
+            The CLI does not parse JSON — it stores exactly what you typed. For
+            dict payloads (e.g. <code>{"message": "…"}</code>), use the Python API below.
+          </p>
+          <p>
+            Watch debug output on all three terminals as the message propagates.
+            Same content → same hash → deduplication prevents loops.
+          </p>
+        </article>
+
+        <article class="hello-step">
+          <h3>Level up: attach a SharedObject (Python API)</h3>
+          <p>
+            Save as <code>hello_node.py</code>, register your object before
+            <code>start()</code>, then gossip a dict payload. Prints on the sender
+            immediately; run a second copy on port <code>9001</code> to receive
+            over the network.
+          </p>
+          <pre class="code-block"><code class="language-python">#!/usr/bin/env python3
+"""hello_node.py — python hello_node.py  (optional peer on :9001)"""
+import time
+
+from chaincraft import ChaincraftNode
+from chaincraft.shared_object import SharedObject
+from chaincraft.shared_message import SharedMessage
+
+
+class HelloObject(SharedObject):
+    def is_valid(self, message: SharedMessage) -> bool:
+        data = message.data
+        return isinstance(data, dict) and "message" in data
+
+    def add_message(self, message, frontier_state=None):
+        text = message.data["message"]
+        print(f"Received: {text}")
+        return None
+
+
+def main() -> None:
+    node = ChaincraftNode(port=9000, local_discovery=True)
+    node.add_shared_object(HelloObject())
+    node.start()
+    node.connect_to_peer("127.0.0.1", 9001, discovery=True)
+
+    node.create_shared_message({"message": "Hello from SharedObject!"})
+    time.sleep(1)
+    node.close()
+
+
+if __name__ == "__main__":
+    main()</code></pre>
+        </article>
+
+        <article class="hello-step">
+          <h3>Next steps</h3>
+          <p>
+            Add merkelized sync for block chains, <code>handle_p2p</code> for
+            Slush-style sampling, or plug in a consensus engine from
+            <code>chaincraft.consensus</code>. See
+            <code>examples/*_demo.py</code> on the release branch and
+            <a href="https://github.com/jio-gl/chaincraft/blob/release/0.6.0/SPECS.md" target="_blank" rel="noopener">SPECS v3</a>.
+          </p>
+          <div class="diagram-wrap" role="img" aria-label="Three-node gossip line: terminal 21001 to 21002 to 21003">
+            <svg class="gossip-topology" viewBox="0 0 640 100" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="12">
+              <defs>
+                <marker id="gossip-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#6ecf4a"/>
+                </marker>
+              </defs>
+              <rect x="20" y="28" width="150" height="44" rx="4" fill="#1c2229" stroke="#6ecf4a" stroke-width="2"/>
+              <text x="95" y="48" fill="#e8ecef" text-anchor="middle">Terminal 1</text>
+              <text x="95" y="64" fill="#9aa3ad" text-anchor="middle" font-size="10">:21001</text>
+              <line x1="170" y1="50" x2="248" y2="50" stroke="#6ecf4a" stroke-width="2" marker-end="url(#gossip-arrow)"/>
+              <text x="209" y="40" fill="#6ecf4a" text-anchor="middle" font-size="10">gossip</text>
+              <rect x="250" y="28" width="150" height="44" rx="4" fill="#1c2229" stroke="#6ecf4a" stroke-width="2"/>
+              <text x="325" y="48" fill="#e8ecef" text-anchor="middle">Terminal 2</text>
+              <text x="325" y="64" fill="#9aa3ad" text-anchor="middle" font-size="10">:21002</text>
+              <line x1="400" y1="50" x2="478" y2="50" stroke="#6ecf4a" stroke-width="2" marker-end="url(#gossip-arrow)"/>
+              <text x="439" y="40" fill="#6ecf4a" text-anchor="middle" font-size="10">gossip</text>
+              <rect x="480" y="28" width="150" height="44" rx="4" fill="#1c2229" stroke="#6ecf4a" stroke-width="2"/>
+              <text x="555" y="48" fill="#e8ecef" text-anchor="middle">Terminal 3</text>
+              <text x="555" y="64" fill="#9aa3ad" text-anchor="middle" font-size="10">:21003</text>
+            </svg>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="start" aria-labelledby="start-heading">
+      <h2 id="start-heading">Get started</h2>
+      <p class="section-lead">Three paths depending on what you are building.</p>
+      <div class="why-grid">
+        <article class="why-card">
+          <h3>Run the network CLI</h3>
+          <p>
+            <code>chaincraft-cli -p 21000</code> — experiment with gossip and peer
+            discovery before writing a protocol class.
+          </p>
+        </article>
+        <article class="why-card">
+          <h3>Build a SharedObject</h3>
+          <p>
+            Chat, voting, beacons — implement <code>is_valid</code> and
+            <code>add_message</code>; on 0.6.0 see
+            <code>examples/chatgroup_demo.py</code>.
+          </p>
+        </article>
+        <article class="why-card">
+          <h3>Assemble a modular chain</h3>
+          <p>
+            <code>BlockchainConfig</code> + consensus engine + ledger (0.6.0).
+            Start with <code>examples/blockchain_demo.py</code>.
+          </p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <img src="chaincraft-logo.png" alt="" width="48" height="48">
+    <p>Chaincraft — MIT licensed · Decentralized protocol development</p>
+    <p>
+      <a href="https://github.com/jio-gl/chaincraft">GitHub</a> ·
+      <a href="https://pypi.org/project/chaincraft/">PyPI</a> ·
+      <a href="hello-world.md">CLI tutorial (markdown)</a>
+    </p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/languages/python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/languages/bash.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      hljs.highlightAll();
+    });
+  </script>
+</body>
+</html>
