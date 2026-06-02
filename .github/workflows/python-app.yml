@@ -4,9 +4,9 @@ name: Python Tests
 
 on:
   push:
-    branches: [ "main", "release/**" ]
+    branches: [main]
   pull_request:
-    branches: [ "main", "release/**" ]
+    branches: [main, "release/**"]
 
 permissions:
   contents: read
