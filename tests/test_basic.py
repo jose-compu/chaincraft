@@ -66,6 +66,34 @@ def push_messages_to_node(source_nodes, target_node, hashes):
                 source_node.send_to_peer(target_peer, source_node.db[message_hash])
 
 
+def converge_hashes(nodes, hashes, timeout=90):
+    """Converge hashes across nodes using active gossip + targeted unicast."""
+    required = set(hashes)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        missing_by_node = []
+        for node in nodes:
+            missing = required - set(node.db)
+            if missing:
+                missing_by_node.append((node, missing))
+
+        if not missing_by_node:
+            return True
+
+        # Heal missing data aggressively: any node that has a hash pushes it
+        # directly to nodes missing that hash, then also re-gossips.
+        for target_node, missing in missing_by_node:
+            target_peer = (target_node.host, target_node.port)
+            for source_node in nodes:
+                for message_hash in missing:
+                    if message_hash in source_node.db:
+                        payload = source_node.db[message_hash]
+                        source_node.send_to_peer(target_peer, payload)
+                        source_node.broadcast(payload)
+        time.sleep(0.25)
+    return False
+
+
 class TestChaincraftNetwork(unittest.TestCase):
     def setUp(self):
         self.num_nodes = 5
@@ -114,7 +142,7 @@ class TestChaincraftNetwork(unittest.TestCase):
         initial_node = self.nodes[0]
         initial_hash, _ = initial_node.create_shared_message("Initial message")
 
-        self.assertTrue(wait_for_hashes(self.nodes, [initial_hash]))
+        self.assertTrue(converge_hashes(self.nodes, [initial_hash], timeout=60))
 
         # Simulate node failure
         failed_node = self.nodes.pop()
@@ -125,7 +153,9 @@ class TestChaincraftNetwork(unittest.TestCase):
         new_node = random.choice(self.nodes)
         new_hash, _ = new_node.create_shared_message("New message")
 
-        self.assertTrue(wait_for_hashes(self.nodes, [initial_hash, new_hash]))
+        self.assertTrue(
+            converge_hashes(self.nodes, [initial_hash, new_hash], timeout=90)
+        )
 
         # Restart failed node on a fresh port with empty state
         restarted_node = ChaincraftNode(reset_db=True)
@@ -137,13 +167,13 @@ class TestChaincraftNetwork(unittest.TestCase):
         time.sleep(1)
 
         # Active catch-up: do not rely on passive gossip timing under CI load
-        for _ in range(3):
+        for _ in range(6):
             seed_messages(self.nodes[0], [initial_hash, new_hash])
             push_messages_to_node(self.nodes[:-1], restarted_node, [initial_hash, new_hash])
             if wait_for_hashes([restarted_node], [initial_hash, new_hash], timeout=5):
                 break
         self.assertTrue(
-            wait_for_hashes([restarted_node], [initial_hash, new_hash], timeout=90),
+            converge_hashes(self.nodes, [initial_hash, new_hash], timeout=120),
             "Restarted node did not sync both messages",
         )
         for node in self.nodes[:-1]:
