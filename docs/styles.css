@@ -16,6 +16,15 @@
   --border: #2a323c;
   --code-bg: #0a0c0e;
   --pixel-shadow: 4px 4px 0 #000;
+  /* Type scale — bumped for readability */
+  --font-body: 18px;
+  --font-small: 1rem;
+  --font-code: 0.95rem;
+  --font-display: 2rem;
+  --font-section-lead: 1.85rem;
+  --font-pixel-sm: 0.7rem;
+  --font-pixel-md: 0.85rem;
+  --font-pixel-lg: 1.05rem;
 }
 
 *,
@@ -31,8 +40,8 @@ html {
 body {
   margin: 0;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 16px;
-  line-height: 1.65;
+  font-size: var(--font-body);
+  line-height: 1.7;
   color: var(--text);
   background: var(--bg);
   background-image:
@@ -83,7 +92,7 @@ a:hover {
 
 .logo-text {
   font-family: "Press Start 2P", cursive;
-  font-size: 0.65rem;
+  font-size: var(--font-pixel-sm);
   color: var(--grass);
   letter-spacing: 0.05em;
 }
@@ -92,7 +101,7 @@ a:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 1.25rem;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 
 .site-nav a {
@@ -122,7 +131,7 @@ a:hover {
 
 .hero h1 {
   font-family: "Press Start 2P", cursive;
-  font-size: clamp(1rem, 3.5vw, 1.35rem);
+  font-size: clamp(1.15rem, 4vw, 1.65rem);
   line-height: 1.8;
   color: var(--text);
   margin: 0 0 1.5rem;
@@ -130,7 +139,7 @@ a:hover {
 
 .hero .tagline {
   font-family: "VT323", monospace;
-  font-size: 1.75rem;
+  font-size: var(--font-display);
   color: var(--text-muted);
   max-width: 640px;
   margin: 0 auto 2rem;
@@ -147,7 +156,7 @@ a:hover {
   display: inline-block;
   padding: 0.85rem 1.5rem;
   font-family: "Press Start 2P", cursive;
-  font-size: 0.55rem;
+  font-size: var(--font-pixel-sm);
   text-transform: uppercase;
   border: 3px solid var(--grass);
   background: var(--grass-dim);
@@ -177,7 +186,7 @@ section {
 
 section h2 {
   font-family: "Press Start 2P", cursive;
-  font-size: clamp(0.75rem, 2.5vw, 0.95rem);
+  font-size: clamp(0.85rem, 3vw, 1.15rem);
   line-height: 1.7;
   margin: 0 0 0.5rem;
   color: var(--grass);
@@ -185,7 +194,7 @@ section h2 {
 
 section .section-lead {
   font-family: "VT323", monospace;
-  font-size: 1.5rem;
+  font-size: var(--font-section-lead);
   color: var(--text-muted);
   margin: 0 0 2.5rem;
   max-width: 720px;
@@ -207,7 +216,7 @@ section .section-lead {
 
 .why-card h3 {
   font-family: "Press Start 2P", cursive;
-  font-size: 0.6rem;
+  font-size: var(--font-pixel-sm);
   line-height: 1.6;
   margin: 0 0 1rem;
   color: var(--accent);
@@ -215,7 +224,7 @@ section .section-lead {
 
 .why-card p {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--font-small);
   color: var(--text-muted);
 }
 
@@ -223,7 +232,7 @@ section .section-lead {
 .module-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: var(--font-small);
   margin: 1.5rem 0;
 }
 
@@ -237,12 +246,12 @@ section .section-lead {
 .module-table th {
   background: var(--bg-elevated);
   font-family: "Press Start 2P", cursive;
-  font-size: 0.5rem;
+  font-size: 0.6rem;
   color: var(--grass);
 }
 
 .module-table code {
-  font-size: 0.82rem;
+  font-size: var(--font-code);
   color: var(--accent);
 }
 
@@ -287,7 +296,7 @@ section .section-lead {
   align-items: center;
   justify-content: center;
   font-family: "Press Start 2P", cursive;
-  font-size: 0.55rem;
+  font-size: var(--font-pixel-sm);
   background: var(--grass);
   color: #0d0f12;
   border: 3px solid #000;
@@ -295,7 +304,7 @@ section .section-lead {
 
 .hello-step h3 {
   font-family: "VT323", monospace;
-  font-size: 1.75rem;
+  font-size: var(--font-display);
   margin: 0 0 0.75rem;
   color: var(--text);
 }
@@ -311,8 +320,8 @@ pre,
   border: 2px solid var(--border);
   padding: 1rem 1.25rem;
   overflow-x: auto;
-  font-size: 0.82rem;
-  line-height: 1.5;
+  font-size: var(--font-code);
+  line-height: 1.55;
   margin: 0 0 1rem;
   box-shadow: inset 0 0 0 1px rgba(110, 207, 74, 0.1);
 }
@@ -383,7 +392,7 @@ code {
 }
 
 .note {
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   color: var(--stone);
   border-left: 3px solid var(--dirt);
   padding-left: 1rem;
@@ -399,7 +408,7 @@ code {
 }
 
 .pill {
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   padding: 0.35rem 0.65rem;
   background: var(--bg-elevated);
   border: 2px solid var(--border);
@@ -417,7 +426,7 @@ code {
   padding: 3rem 2rem;
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 
 .site-footer img {
