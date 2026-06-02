@@ -77,7 +77,7 @@ class SnowballObject(CoreSharedObject):
         self._accepted: Optional[Color] = None
         self._query_id = 0
         self._pending: Dict[int, Dict[Tuple[str, int], Color]] = {}
-        self._processed_qids: set[int] = set()
+        self._processed_qids: set = set()
         self._confidence: Dict[Color, int] = {Color.RED: 0, Color.BLUE: 0}
         self._last_color = Color.UNCOLORED
         self._cnt = 0

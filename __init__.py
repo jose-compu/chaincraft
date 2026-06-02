@@ -5,7 +5,7 @@ This package provides the fundamental components needed to create distributed ne
 implement consensus mechanisms, and prototype blockchain applications.
 """
 
-__version__ = "0.5.2"
+__version__ = "0.6.0"
 __author__ = "Chaincraft Contributors"
 __email__ = "chaincraft@example.com"
 

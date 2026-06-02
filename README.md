@@ -1,13 +1,13 @@
 # Chaincraft
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Python Unit Tests](https://github.com/google/adk-python/actions/workflows/python-unit-tests.yml/badge.svg)]([https://github.com/google/adk-python/actions/workflows/python-unit-tests.yml](https://github.com/jio-gl/chaincraft/blob/main/.github/workflows/python-app.yml))
+[![Python Unit Tests](https://github.com/jio-gl/chaincraft/actions/workflows/python-app.yml/badge.svg)](https://github.com/jio-gl/chaincraft/actions/workflows/python-app.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Blockchain](https://img.shields.io/badge/blockchain-educational-blueviolet)](https://github.com/jio-gl/chaincraft)
 [![ECDSA](https://img.shields.io/badge/ECDSA-supported-green)](https://github.com/jio-gl/chaincraft)
 [![Project Status](https://img.shields.io/badge/status-in%20development-yellow)](https://github.com/jio-gl/chaincraft)
 [![PyPI version](https://badge.fury.io/py/chaincraft.svg)](https://pypi.org/project/chaincraft/)
-[![PyPI Downloads](https://static.pepy.tech/badge/cerebras-agent)](https://pepy.tech/projects/chaincraft)
+[![PyPI Downloads](https://static.pepy.tech/badge/chaincraft)](https://pepy.tech/projects/chaincraft)
 
 **A platform for blockchain research and prototyping**
 
@@ -15,6 +15,9 @@ Chaincraft is a Python-based framework for building and experimenting with block
 
 ## Key Features
 
+- **Modular blockchain (0.6.0)**: Pluggable ledger, fee market, mempool, consensus, and fork choice via `BlockchainConfig`
+- **Decentralized protocols**: Configurable ChatGroup, pub/sub, and CRDT key-value store
+- **Consensus catalog**: Gossip, PoW, BFT, and DAG engines selectable by name
 - **Decentralized Network**: Built-in peer discovery, connection management, and message propagation  
 - **Shared Objects**: Extensible framework for maintaining distributed state across nodes  
 - **Cryptographic Primitives**: Implementation of essential blockchain cryptography  

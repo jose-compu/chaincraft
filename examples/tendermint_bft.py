@@ -1,3 +1,9 @@
+"""Networked Tendermint BFT teaching demo (timeouts, merkelized blocks, CLI).
+
+The **core** deterministic engine is :class:`chaincraft.consensus.bft.TendermintConsensus`
+(select via ``get_consensus_engine("tendermint")``). See ``consensus_demo.py`` for
+a minimal core usage example without this networked wrapper.
+"""
 from typing import List, Dict, Any
 import json
 import hashlib

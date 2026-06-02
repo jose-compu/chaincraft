@@ -1,13 +1,12 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+# Lint + pytest on Python 3.8-3.12 with coverage gate.
 
 name: Python Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main, "release/**"]
 
 permissions:
   contents: read
@@ -15,65 +14,26 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python 3.10
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
-        python-version: "3.10"
-    - name: Check package configuration files
-      run: |
-        echo "Examining package configuration files..."
-        
-        if [ -f "setup.py" ]; then
-          echo "Contents of setup.py:"
-          cat setup.py
-        else
-          echo "No setup.py found"
-        fi
-        
-        if [ -f "pyproject.toml" ]; then
-          echo "Contents of pyproject.toml:"
-          cat pyproject.toml
-        else
-          echo "No pyproject.toml found"
-        fi
-        
-        # Check Python path and working directory
-        echo "Current directory: $(pwd)"
-        echo "Python version: $(python --version)"
-      shell: /usr/bin/bash -e {0}
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        echo "Starting dependency installation"
-        # Set a timeout for each command to avoid hanging indefinitely
-        echo "Upgrading pip..."
-        timeout 60 python -m pip install --upgrade pip || echo "Pip upgrade timed out after 60s"
-        
-        echo "Installing dev dependencies..."
-        timeout 120 pip install flake8 pytest || echo "Dev dependencies install timed out after 120s"
-        
-        if [ -f requirements.txt ]; then
-          echo "Installing requirements.txt dependencies..."
-          timeout 180 pip install -r requirements.txt || echo "requirements.txt install timed out after 180s"
-        else
-          echo "No requirements.txt found, skipping"
-        fi
-        
-        echo "Installing package in development mode..."
-        timeout 300 pip install -e . || echo "Development mode install timed out after 300s"
-      shell: /usr/bin/bash -e {0}
-      env:
-        pythonLocation: /opt/hostedtoolcache/Python/3.10.17/x64
-        LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.10.17/x64/lib
+        python -m pip install --upgrade pip
+        pip install flake8 pytest pytest-cov hypothesis
+        pip install -e .
     - name: Lint with flake8
       run: |
-        # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    - name: Test with pytest
+    - name: Test with pytest and coverage
       run: |
-        python -m pytest -q tests
-      shell: /usr/bin/bash -e {0}
+        python -m pytest tests -v --cov=chaincraft --cov-report=term --cov-fail-under=50
