@@ -13,12 +13,24 @@ beacon, protocols). The ``examples/`` folder keeps **CLIs**, **network demos**,
 | `blockchain_demo.py` | ``BlockchainConfig`` + ``build_blockchain()`` |
 | `beacon_demo.py` | Modular ``chaincraft.beacon`` (no ledger) |
 | `consensus_demo.py` | ``get_consensus_engine()`` across families |
+| `consensus_gossip_demo.py` | Gossip family (`relay`, `hashgraph`) |
+| `consensus_bft_demo.py` | BFT family (`pbft`, `hotstuff`) |
+| `consensus_pow_demo.py` | PoW family (`pow`, `beacon`, `vdf`) |
+| `consensus_dag_demo.py` | DAG family (`nano_lattice`, `dagcoin`) |
 | `chatgroup_demo.py` | ``chaincraft.protocols.ChatGroup`` with ECDSA |
+| `protocol_pubsub_demo.py` | ``TopicPubSub`` basic subscribe/publish |
+| `protocol_crdt_demo.py` | ``CRDTKeyValue`` deterministic merge |
 
 ```bash
 python examples/blockchain_demo.py
 python examples/beacon_demo.py
 python examples/consensus_demo.py
+python examples/consensus_gossip_demo.py
+python examples/consensus_bft_demo.py
+python examples/consensus_pow_demo.py
+python examples/consensus_dag_demo.py
+python examples/protocol_pubsub_demo.py
+python examples/protocol_crdt_demo.py
 ```
 
 ---
