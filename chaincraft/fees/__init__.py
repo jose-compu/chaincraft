@@ -1,11 +1,11 @@
 """Pluggable fee market policies (Chaincraft 0.6.0).
 
-    from chaincraft.fees import get_fee_policy, BlockContext
+from chaincraft.fees import get_fee_policy, BlockContext
 
-    policy = get_fee_policy("eip1559")
-    ctx = BlockContext(max_transactions=10, base_fee=8)
-    included = policy.select_for_block(candidate_txs, ctx)
-    charge = policy.effective_charge(included[0], ctx)
+policy = get_fee_policy("eip1559")
+ctx = BlockContext(max_transactions=10, base_fee=8)
+included = policy.select_for_block(candidate_txs, ctx)
+charge = policy.effective_charge(included[0], ctx)
 """
 
 from .base import BlockContext, FeePolicy

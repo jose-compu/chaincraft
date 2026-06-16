@@ -63,9 +63,7 @@ class TestBalanceLedger(unittest.TestCase):
         self.assertEqual(new_state.balance_of("carol"), 1)  # tip only
         self.assertEqual(new_state.burned, 3)
         # Supply drops by exactly the burned amount.
-        self.assertEqual(
-            new_state.total_supply(), self.state.total_supply() - 3
-        )
+        self.assertEqual(new_state.total_supply(), self.state.total_supply() - 3)
 
     def test_state_copy_is_independent(self):
         snapshot = self.state.copy()

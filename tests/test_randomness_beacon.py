@@ -352,7 +352,9 @@ class TestRandomnessBeacon(unittest.TestCase):
 
         total = zeros_total + ones_total
         zero_pct = (zeros_total / total) * 100
-        print(f"  overall: {zeros_total} zeros, {ones_total} ones ({zero_pct:.2f}% zeros)")
+        print(
+            f"  overall: {zeros_total} zeros, {ones_total} ones ({zero_pct:.2f}% zeros)"
+        )
         self.assertGreaterEqual(zero_pct, 42)
         self.assertLessEqual(zero_pct, 58)
 

@@ -129,8 +129,12 @@ class NanoLatticeConsensus(DAGConsensus):
         amount = self.blocks[send_hash].amount
         new_balance = self.balance_of(recipient) + amount
         return LatticeBlock(
-            recipient, RECEIVE, self.head(recipient), new_balance,
-            link=send_hash, amount=amount,
+            recipient,
+            RECEIVE,
+            self.head(recipient),
+            new_balance,
+            link=send_hash,
+            amount=amount,
         )
 
     # -- application -------------------------------------------------------

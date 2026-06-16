@@ -24,9 +24,7 @@ class TestAbnormalFees(unittest.TestCase):
         self.assertFalse(chain.submit(tx))
 
     def test_double_spend_same_nonce_rbf_replaces(self):
-        chain = build_blockchain(
-            BlockchainConfig(genesis_allocations={"alice": 100})
-        )
+        chain = build_blockchain(BlockchainConfig(genesis_allocations={"alice": 100}))
         t1 = Transaction(sender="alice", recipient="bob", amount=1, fee=1, nonce=0)
         t2 = Transaction(sender="alice", recipient="carol", amount=1, fee=2, nonce=0)
         self.assertTrue(chain.submit(t1))

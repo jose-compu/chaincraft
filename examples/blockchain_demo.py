@@ -18,7 +18,9 @@ def main():
     chain.submit(tx)
     block = chain.produce_block(miner="carol")
     print(f"block {block.index}: {len(block.tx_ids)} tx(s)")
-    print(f"  alice={chain.balance_of('alice')}  bob={chain.balance_of('bob')}  carol={chain.balance_of('carol')}")
+    print(
+        f"  alice={chain.balance_of('alice')}  bob={chain.balance_of('bob')}  carol={chain.balance_of('carol')}"
+    )
 
 
 if __name__ == "__main__":

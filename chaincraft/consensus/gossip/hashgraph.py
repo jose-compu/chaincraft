@@ -36,14 +36,18 @@ class HashgraphEvent:
     children: Set[str] = field(default_factory=set)
 
 
-def _event_id(creator: str, payload: Any, self_p: Optional[str], other_p: Optional[str]) -> str:
+def _event_id(
+    creator: str, payload: Any, self_p: Optional[str], other_p: Optional[str]
+) -> str:
     body = {
         "creator": creator,
         "payload": payload,
         "self_parent": self_p,
         "other_parent": other_p,
     }
-    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(body, sort_keys=True, default=str).encode()
+    ).hexdigest()
 
 
 @register_consensus

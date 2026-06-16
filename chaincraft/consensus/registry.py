@@ -55,8 +55,7 @@ class ConsensusRegistry:
             return self._by_name[name]
         except KeyError:
             raise ConsensusError(
-                f"unknown consensus engine {name!r}; "
-                f"available: {self.available()}"
+                f"unknown consensus engine {name!r}; " f"available: {self.available()}"
             )
 
     def create(self, name: str, **kwargs) -> ConsensusEngine:
@@ -66,9 +65,7 @@ class ConsensusRegistry:
         return sorted(self._by_name)
 
     def by_category(self, category: str) -> List[str]:
-        return sorted(
-            n for n, c in self._by_name.items() if c.category == category
-        )
+        return sorted(n for n, c in self._by_name.items() if c.category == category)
 
     def categories(self) -> Dict[str, List[str]]:
         return {cat: self.by_category(cat) for cat in sorted(CATEGORIES)}

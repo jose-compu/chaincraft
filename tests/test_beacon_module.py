@@ -53,7 +53,14 @@ class TestDerivationVariations(unittest.TestCase):
         self.assertNotEqual(d, r)
 
     def test_all_derivations_produce_unit_float(self):
-        for name in ("direct", "rehash", "timestamp_mix", "xor_chain", "modulo", "height_salt"):
+        for name in (
+            "direct",
+            "rehash",
+            "timestamp_mix",
+            "xor_chain",
+            "modulo",
+            "height_salt",
+        ):
             b = self._beacon_with(name)
             val = b.random_float()
             self.assertGreaterEqual(val, 0.0)

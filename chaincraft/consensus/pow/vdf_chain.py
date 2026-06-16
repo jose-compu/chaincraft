@@ -70,9 +70,7 @@ class VDFLinearWorkConsensus(PoWConsensus):
         )
         challenge = self._challenge(header)
         proof = self.vdf.create_proof(challenge)
-        block_id = hashlib.sha256(
-            f"{challenge}:{proof}".encode()
-        ).hexdigest()
+        block_id = hashlib.sha256(f"{challenge}:{proof}".encode()).hexdigest()
         return {**header, "proof": proof, "id": block_id}
 
     def _verify(self, block: Dict[str, Any]) -> bool:
@@ -89,9 +87,7 @@ class VDFLinearWorkConsensus(PoWConsensus):
         if block["height"] != self.chain.block_height(block["parent"]) + 1:
             return False
         challenge = self._challenge(header)
-        expected_id = hashlib.sha256(
-            f"{challenge}:{proof}".encode()
-        ).hexdigest()
+        expected_id = hashlib.sha256(f"{challenge}:{proof}".encode()).hexdigest()
         if block_id != expected_id:
             return False
         return self.vdf.verify_proof(challenge, proof)

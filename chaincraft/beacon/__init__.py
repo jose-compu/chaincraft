@@ -55,14 +55,18 @@ __all__ = [
 def __getattr__(name: str):
     if name == "BeaconConfig":
         from .config import BeaconConfig
+
         return BeaconConfig
     if name == "RandomnessBeacon":
         from .core import RandomnessBeacon
+
         return RandomnessBeacon
     if name == "RandomnessBeaconConsensus":
         from chaincraft.consensus.pow.beacon import RandomnessBeaconConsensus
+
         return RandomnessBeaconConsensus
     if name == "build_beacon":
         from .config import build_beacon
+
         return build_beacon
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

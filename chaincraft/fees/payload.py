@@ -105,9 +105,7 @@ class AbsolutePayloadPricing(PayloadPricing):
 
     def __init__(self, absolute_fee: int = 1):
         if absolute_fee < 0:
-            raise PayloadPricingError(
-                f"absolute_fee must be >= 0, got {absolute_fee}"
-            )
+            raise PayloadPricingError(f"absolute_fee must be >= 0, got {absolute_fee}")
         self.absolute_fee = absolute_fee
 
     def cost(self, tx: Any) -> int:

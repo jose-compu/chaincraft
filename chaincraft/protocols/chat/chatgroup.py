@@ -14,7 +14,9 @@ from .membership import MembershipPolicy, OpenMembership, get_membership_policy
 MESSAGE_TAG = "CHATGROUP"
 
 
-def _verify_signature(public_key_pem: str, payload_str: str, signature_hex: str) -> bool:
+def _verify_signature(
+    public_key_pem: str, payload_str: str, signature_hex: str
+) -> bool:
     try:
         from ...crypto_primitives.sign import ECDSASignaturePrimitive
 
@@ -62,13 +64,17 @@ class ChatGroup(SharedObject):
         sig = data["signature"]
         body = dict(data)
         del body["signature"]
-        if not _verify_signature(data["public_key_pem"], json.dumps(body, sort_keys=True), sig):
+        if not _verify_signature(
+            data["public_key_pem"], json.dumps(body, sort_keys=True), sig
+        ):
             return False
         action = data["action"]
         room_name = data["room"]
         actor = data["public_key_pem"]
         if action == "CREATE":
-            return room_name not in self.rooms and self.policy.may_create({}, actor, data)
+            return room_name not in self.rooms and self.policy.may_create(
+                {}, actor, data
+            )
         if room_name not in self.rooms:
             return False
         room = self.rooms[room_name]
@@ -88,7 +94,9 @@ class ChatGroup(SharedObject):
         if action == "CREATE":
             self.rooms[room_name] = {
                 "admin": actor,
-                "members": {actor} if isinstance(self.policy, OpenMembership) else set(),
+                "members": (
+                    {actor} if isinstance(self.policy, OpenMembership) else set()
+                ),
                 "messages": [],
                 "policy": self.policy.name,
             }

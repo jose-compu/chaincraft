@@ -53,17 +53,17 @@ class TestForkAwareChain(unittest.TestCase):
 
     def test_side_branch_loses_tiebreak(self):
         c = ForkAwareChain("g")
-        c.add_block("a", "g")          # canonical tip a
-        r = c.add_block("b", "g")      # same height; "a" < "b" keeps a
+        c.add_block("a", "g")  # canonical tip a
+        r = c.add_block("b", "g")  # same height; "a" < "b" keeps a
         self.assertFalse(r.reorg)
         self.assertEqual(c.tip, "a")
         self.assertEqual(r.extended, [])
 
     def test_reorg_to_heavier_branch(self):
         c = ForkAwareChain("g")
-        c.add_block("a", "g")          # canonical [g, a]
-        c.add_block("b", "g")          # side branch at height 1
-        r = c.add_block("c", "b")      # branch via b is now longer
+        c.add_block("a", "g")  # canonical [g, a]
+        c.add_block("b", "g")  # side branch at height 1
+        r = c.add_block("c", "b")  # branch via b is now longer
         self.assertTrue(r.reorg)
         self.assertEqual(c.tip, "c")
         self.assertEqual(c.canonical_ids(), ["g", "b", "c"])
@@ -106,19 +106,19 @@ class TestMiningAndFinality(unittest.TestCase):
     def test_finality_by_confirmations(self):
         eng = ProofOfWorkConsensus(difficulty=8, confirmations=1, miner="m0")
         eng.propose("tx1")
-        self.assertFalse(eng.is_decided())          # height 1, needs 1 buried
+        self.assertFalse(eng.is_decided())  # height 1, needs 1 buried
         eng.propose("tx2")
-        self.assertTrue(eng.is_decided())           # block@1 now confirmed
+        self.assertTrue(eng.is_decided())  # block@1 now confirmed
         self.assertEqual(eng.decision(), eng.chain.canonical_ids()[1])
 
     def test_tampered_block_rejected(self):
         miner = ProofOfWorkConsensus(difficulty=8, miner="mx")
         block = miner.mine("payload")
-        block["nonce"] = block["nonce"] + 1         # invalidate PoW
+        block["nonce"] = block["nonce"] + 1  # invalidate PoW
         node = ProofOfWorkConsensus(difficulty=8)
         self.assertFalse(node._verify(block))
         node.observe(_msg(block))
-        self.assertEqual(node.tip(), GENESIS_ID)    # not ingested
+        self.assertEqual(node.tip(), GENESIS_ID)  # not ingested
 
 
 class TestNetworkConvergence(unittest.TestCase):
@@ -154,7 +154,7 @@ class TestNetworkConvergence(unittest.TestCase):
         node = ProofOfWorkConsensus(difficulty=8, confirmations=1)
         node.observe(_msg(hi))
         self.assertEqual(node.tip(), hi["id"])
-        node.observe(_msg(lo))                       # lower hash wins the tie
+        node.observe(_msg(lo))  # lower hash wins the tie
         self.assertEqual(node.tip(), lo["id"])
         self.assertTrue(node.last_result.reorg)
         self.assertIn(hi["id"], node.last_result.reverted)

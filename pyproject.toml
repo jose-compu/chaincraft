@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chaincraft"
-version = "0.6.2"
+version = "0.6.3"
 description = "A platform for blockchain education and prototyping"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,7 +21,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -30,9 +29,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Distributed Computing",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
-    "cryptography>=46.0.6",
+    "cryptography>=48.0.1",
 ]
 
 [project.optional-dependencies]
@@ -72,4 +71,4 @@ include = ["chaincraft*", "examples*"]
 
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py39']

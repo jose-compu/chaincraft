@@ -162,14 +162,18 @@ class TestChaincraftNetwork(unittest.TestCase):
         restarted_node.start()
         for node in self.nodes:
             restarted_node.connect_to_peer(node.host, node.port, discovery=True)
-            node.connect_to_peer(restarted_node.host, restarted_node.port, discovery=True)
+            node.connect_to_peer(
+                restarted_node.host, restarted_node.port, discovery=True
+            )
         self.nodes.append(restarted_node)
         time.sleep(1)
 
         # Active catch-up: do not rely on passive gossip timing under CI load
         for _ in range(6):
             seed_messages(self.nodes[0], [initial_hash, new_hash])
-            push_messages_to_node(self.nodes[:-1], restarted_node, [initial_hash, new_hash])
+            push_messages_to_node(
+                self.nodes[:-1], restarted_node, [initial_hash, new_hash]
+            )
             if wait_for_hashes([restarted_node], [initial_hash, new_hash], timeout=5):
                 break
         self.assertTrue(

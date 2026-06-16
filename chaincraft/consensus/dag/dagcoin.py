@@ -52,9 +52,7 @@ class DAGcoinConsensus(DAGConsensus):
         if confirmation_weight <= 0:
             raise ConsensusError("confirmation_weight must be positive")
         self.confirmation_weight = confirmation_weight
-        self.txs: Dict[str, Tx] = {
-            self.GENESIS: Tx(self.GENESIS, [], weight=1)
-        }
+        self.txs: Dict[str, Tx] = {self.GENESIS: Tx(self.GENESIS, [], weight=1)}
         self.tips: Set[str] = {self.GENESIS}
         #: conflict_id -> set of tx ids competing for the same resource.
         self.conflicts: Dict[str, Set[str]] = {}

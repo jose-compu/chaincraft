@@ -84,7 +84,9 @@ class SequentialSource(BlockSource):
         self._counter += 1
         payload = f"{prev_hash}:{height}:{self._counter}"
         block_id = hashlib.sha256(payload.encode()).hexdigest()
-        return BeaconBlock(height, prev_hash, ts, block_id, extra={"seq": self._counter})
+        return BeaconBlock(
+            height, prev_hash, ts, block_id, extra={"seq": self._counter}
+        )
 
     def verify(self, block: BeaconBlock, prev_hash: str, height: int) -> bool:
         if block.height != height or block.prev_hash != prev_hash:
@@ -105,7 +107,9 @@ class PowBlockSource(BlockSource):
     def __init__(self, difficulty: int = 256, difficulty_bits: Optional[int] = None):
         if difficulty_bits is not None:
             if difficulty_bits < 1:
-                raise BeaconError(f"difficulty_bits must be >= 1, got {difficulty_bits}")
+                raise BeaconError(
+                    f"difficulty_bits must be >= 1, got {difficulty_bits}"
+                )
             difficulty = 2**difficulty_bits
         if difficulty < 1:
             raise BeaconError(f"difficulty must be >= 1, got {difficulty}")
@@ -149,7 +153,12 @@ class LegacyBeaconPowSource(PowBlockSource):
 
     name = "legacy_pow"
 
-    def __init__(self, coinbase: str = "0x0", difficulty: int = 256, difficulty_bits: Optional[int] = None):
+    def __init__(
+        self,
+        coinbase: str = "0x0",
+        difficulty: int = 256,
+        difficulty_bits: Optional[int] = None,
+    ):
         super().__init__(difficulty=difficulty, difficulty_bits=difficulty_bits)
         self.coinbase = coinbase
 
@@ -184,7 +193,12 @@ class LegacyBeaconPowSource(PowBlockSource):
 
 BLOCK_SOURCES: Dict[str, Type[BlockSource]] = {
     cls.name: cls
-    for cls in (HashChainSource, SequentialSource, PowBlockSource, LegacyBeaconPowSource)
+    for cls in (
+        HashChainSource,
+        SequentialSource,
+        PowBlockSource,
+        LegacyBeaconPowSource,
+    )
 }
 
 

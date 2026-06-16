@@ -57,7 +57,7 @@ class RandomnessBeacon(MerkelizedObject):
             },
             max_timestamp_skew=15,
         )
-        self.difficulty = 2 ** difficulty_bits
+        self.difficulty = 2**difficulty_bits
         self.block_by_hash: Dict[str, Dict] = {}
         self.children_by_hash: Dict[str, Set[str]] = {}
         self.tip_hashes: Set[str] = set()
@@ -180,7 +180,10 @@ class RandomnessBeacon(MerkelizedObject):
                 break
         if start_idx is None:
             return []
-        return [SharedMessage(data=self.blocks[i]) for i in range(start_idx + 1, len(self.blocks))]
+        return [
+            SharedMessage(data=self.blocks[i])
+            for i in range(start_idx + 1, len(self.blocks))
+        ]
 
     def get_messages_since_digest(self, digest: str) -> List[SharedMessage]:
         return self.gossip_object(digest)

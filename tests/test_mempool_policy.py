@@ -124,9 +124,7 @@ class TestChainIntegration(unittest.TestCase):
         self.assertEqual(len(chain.pending), 1)
 
     def test_reorg_reinjection_roundtrip(self):
-        cfg = BlockchainConfig(
-            coinbase_reward=0, genesis_allocations={"alice": 1000}
-        )
+        cfg = BlockchainConfig(coinbase_reward=0, genesis_allocations={"alice": 1000})
         chain = build_blockchain(cfg)
         tx = _tx(3, nonce=0)
         chain.submit(tx)

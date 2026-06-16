@@ -12,7 +12,9 @@ def main():
     )
     for i in range(3):
         beacon.append(timestamp=100 + i)
-        print(f"block {i + 1}: random={beacon.random_float():.6f}  tip={beacon.tip[:12]}...")
+        print(
+            f"block {i + 1}: random={beacon.random_float():.6f}  tip={beacon.tip[:12]}..."
+        )
 
 
 if __name__ == "__main__":

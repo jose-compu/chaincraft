@@ -12,15 +12,21 @@ class MembershipPolicy(ABC):
     name: str = "abstract"
 
     @abstractmethod
-    def may_create(self, room: Dict[str, Any], actor_key: str, data: Dict[str, Any]) -> bool:
+    def may_create(
+        self, room: Dict[str, Any], actor_key: str, data: Dict[str, Any]
+    ) -> bool:
         """Whether ``CREATE`` is allowed."""
 
     @abstractmethod
-    def may_join(self, room: Dict[str, Any], actor_key: str, data: Dict[str, Any]) -> bool:
+    def may_join(
+        self, room: Dict[str, Any], actor_key: str, data: Dict[str, Any]
+    ) -> bool:
         """Whether a join request is valid."""
 
     @abstractmethod
-    def may_post(self, room: Dict[str, Any], actor_key: str, data: Dict[str, Any]) -> bool:
+    def may_post(
+        self, room: Dict[str, Any], actor_key: str, data: Dict[str, Any]
+    ) -> bool:
         """Whether ``POST`` is allowed for ``actor_key``."""
 
 
@@ -71,8 +77,7 @@ class AdminApprovalMembership(MembershipPolicy):
 
 
 MEMBERSHIP_POLICIES = {
-    cls.name: cls
-    for cls in (OpenMembership, InviteMembership, AdminApprovalMembership)
+    cls.name: cls for cls in (OpenMembership, InviteMembership, AdminApprovalMembership)
 }
 
 

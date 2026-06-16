@@ -162,8 +162,8 @@ class UTXOLedgerModel(LedgerModel):
     ) -> UTXOState:
         new_state = state.copy()
         owner = miner if miner is not None else "__fees__"
-        coinbase_id = compute_tx_id({"coinbase": owner, "reward": reward,
-                                     "supply": state.total_supply()})
-        new_state.utxos[f"coinbase:{coinbase_id}"] = {"owner": owner,
-                                                      "amount": reward}
+        coinbase_id = compute_tx_id(
+            {"coinbase": owner, "reward": reward, "supply": state.total_supply()}
+        )
+        new_state.utxos[f"coinbase:{coinbase_id}"] = {"owner": owner, "amount": reward}
         return new_state

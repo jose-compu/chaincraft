@@ -7,7 +7,11 @@ from typing import Any, Dict, List, Optional
 
 from .base import BeaconBlock, BeaconError, GENESIS_HASH
 from .block_source import BlockSource, HashChainSource, get_block_source
-from .derivation import DirectHashDerivation, RandomnessDerivation, get_randomness_derivation
+from .derivation import (
+    DirectHashDerivation,
+    RandomnessDerivation,
+    get_randomness_derivation,
+)
 
 
 class RandomnessBeacon:
@@ -110,9 +114,7 @@ class RandomnessBeacon:
     def random_float(self, block_id: Optional[str] = None) -> float:
         bid = block_id or self.finalized_block_id() or self.chain.tip
         block = self._blocks.get(bid)
-        return self.derivation.derive(
-            bid, block, self.chain.canonical_ids()
-        )
+        return self.derivation.derive(bid, block, self.chain.canonical_ids())
 
     def random_int(self, low: int, high: int, block_id: Optional[str] = None) -> int:
         if low > high:
@@ -147,8 +149,6 @@ class RandomnessBeacon:
             if self.max_timestamp_skew is not None:
                 if abs(block.timestamp - int(time.time())) > self.max_timestamp_skew:
                     return False
-            return self.block_source.verify(
-                block, block.prev_hash, block.height
-            )
+            return self.block_source.verify(block, block.prev_hash, block.height)
         except (BeaconError, KeyError, TypeError, ValueError):
             return False

@@ -36,11 +36,11 @@ class _Node:
 class ForkChoiceResult:
     """How the canonical chain changed after adding a block."""
 
-    added: bool                      # the block was new to the graph
-    reorg: bool                      # canonical history was rewritten
-    new_tip: str                     # canonical tip after the update
-    extended: List[str] = field(default_factory=list)   # ids now canonical
-    reverted: List[str] = field(default_factory=list)   # ids no longer canonical
+    added: bool  # the block was new to the graph
+    reorg: bool  # canonical history was rewritten
+    new_tip: str  # canonical tip after the update
+    extended: List[str] = field(default_factory=list)  # ids now canonical
+    reverted: List[str] = field(default_factory=list)  # ids no longer canonical
 
 
 class ForkAwareChain:

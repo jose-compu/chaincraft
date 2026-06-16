@@ -43,9 +43,7 @@ class EIP1559(FeePolicy):
     def effective_charge(self, tx: Any, ctx: BlockContext) -> FeeCharge:
         fee = _fee_of(tx)
         if fee < ctx.base_fee:
-            raise ValueError(
-                f"fee {fee} does not cover base fee {ctx.base_fee}"
-            )
+            raise ValueError(f"fee {fee} does not cover base fee {ctx.base_fee}")
         burned = ctx.base_fee
         tip = fee - ctx.base_fee
         return FeeCharge(charged=fee, burned=burned, tip=tip)

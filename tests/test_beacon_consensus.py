@@ -124,7 +124,9 @@ class TestPowBlockSource(unittest.TestCase):
         )
         block = eng.mine()
         self.assertEqual(block["blockHeight"], 1)
-        eng.observe(SharedMessage(data={"consensus": "beacon", "op": "block", "block": block}))
+        eng.observe(
+            SharedMessage(data={"consensus": "beacon", "op": "block", "block": block})
+        )
         self.assertEqual(eng.chain.height, 1)
 
 
