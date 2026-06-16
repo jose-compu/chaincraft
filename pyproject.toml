@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chaincraft"
-version = "0.6.0"
+version = "0.6.1"
 description = "A platform for blockchain education and prototyping"
 readme = "README.md"
 license = { text = "MIT" }
@@ -32,7 +32,7 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "cryptography>=44.0.1",
+    "cryptography>=46.0.6",
 ]
 
 [project.optional-dependencies]
