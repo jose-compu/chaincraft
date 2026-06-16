@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Set, Union
 
 from ...shared_message import SharedMessage
 from ...shared_object import SharedObject
@@ -40,6 +41,14 @@ class ChatGroup(SharedObject):
         self.max_skew_seconds = max_skew_seconds
         self.on_message = on_message
         self.rooms: Dict[str, Dict[str, Any]] = {}
+        self._seen_message_ids: Dict[str, Set[str]] = {}
+
+    @staticmethod
+    def _message_id(data: dict) -> str:
+        """Stable id for gossip dedup (payload without signature)."""
+        body = {k: v for k, v in data.items() if k != "signature"}
+        payload = json.dumps(body, sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()
 
     def is_valid(self, message: SharedMessage) -> bool:
         data = message.data
@@ -95,6 +104,11 @@ class ChatGroup(SharedObject):
             self._append(room_name, data)
 
     def _append(self, room_name: str, data: dict) -> None:
+        seen = self._seen_message_ids.setdefault(room_name, set())
+        message_id = self._message_id(data)
+        if message_id in seen:
+            return
+        seen.add(message_id)
         self.rooms[room_name]["messages"].append(data)
         if self.on_message:
             self.on_message(room_name, data)
