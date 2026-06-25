@@ -32,8 +32,10 @@ htmlcov/
 *.swo
 
 # Project-specific: node dbm storage (tests/examples)
-node_*.db
+node_*.db*
+__test__.db*
 
 # Profiling / misc
 profile_*.txt
 *.log
+EVAL.md
