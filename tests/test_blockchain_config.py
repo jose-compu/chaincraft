@@ -3,10 +3,16 @@
 import os
 import sys
 import unittest
+import warnings
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from chaincraft.config import BlockchainConfig, BlockchainBuilder, build_blockchain
+from chaincraft.config import (
+    BlockchainConfig,
+    BlockchainBuilder,
+    ExperimentalConfigWarning,
+    build_blockchain,
+)
 from chaincraft.ledger import Transaction, UTXOTransaction, UTXOOutput
 
 
@@ -57,7 +63,9 @@ class TestEIP1559Chain(unittest.TestCase):
             target_transactions_per_block=1,
             genesis_allocations={"alice": 100},
         )
-        self.chain = build_blockchain(cfg)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ExperimentalConfigWarning)
+            self.chain = build_blockchain(cfg)
 
     def test_below_base_fee_rejected_from_mempool(self):
         tx = Transaction(sender="alice", recipient="bob", amount=1, fee=3, nonce=0)

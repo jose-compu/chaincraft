@@ -118,10 +118,11 @@ class TestConsensusAdapter(unittest.TestCase):
 
 class TestPowBlockSource(unittest.TestCase):
     def test_legacy_difficulty_bits(self):
-        eng = RandomnessBeaconConsensus(
-            difficulty_bits=10,
-            max_timestamp_skew=None,
-        )
+        with self.assertWarns(DeprecationWarning):
+            eng = RandomnessBeaconConsensus(
+                difficulty_bits=10,
+                max_timestamp_skew=None,
+            )
         block = eng.mine()
         self.assertEqual(block["blockHeight"], 1)
         eng.observe(

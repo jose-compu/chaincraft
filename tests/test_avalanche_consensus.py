@@ -23,7 +23,7 @@ class TestRegistration(unittest.TestCase):
         self.assertIn("avalanche", default_registry.by_category("gossip"))
 
     def test_factory_builds_engine(self):
-        eng = get_consensus_engine("avalanche", k=4, alpha=0.5)
+        eng = get_consensus_engine("avalanche", k=4, alpha=0.6)
         self.assertIsInstance(eng, AvalancheConsensus)
         self.assertEqual(eng.k, 4)
 
