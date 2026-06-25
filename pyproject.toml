@@ -45,7 +45,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_default_fixture_loop_scope = "function"
+addopts = ["--import-mode=importlib"]
 
 [tool.coverage.run]
 source = ["chaincraft"]
