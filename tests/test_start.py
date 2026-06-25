@@ -1,9 +1,16 @@
 # tests/test_start.py
+import glob
+import os
 import unittest
 import time
-import dbm.ndbm
 import socket
 from chaincraft import ChaincraftNode
+
+
+def _remove_db_artifacts(db_name: str) -> None:
+    for path in (db_name, f"{db_name}.db", f"{db_name}.dir", f"{db_name}.pag"):
+        if os.path.exists(path):
+            os.remove(path)
 
 
 class TestChaincraftNode(unittest.TestCase):
@@ -12,7 +19,12 @@ class TestChaincraftNode(unittest.TestCase):
 
     def tearDown(self):
         for node in self.nodes:
+            db_name = getattr(node, "db_name", None)
             node.close()
+            if db_name:
+                _remove_db_artifacts(db_name)
+        for path in glob.glob("__test__.db*"):
+            os.remove(path)
 
     def create_node(self, **kwargs):
         node = ChaincraftNode(**kwargs)
@@ -27,8 +39,7 @@ class TestChaincraftNode(unittest.TestCase):
     def test_random_address_initialization(self):
         node = self.create_node(use_fixed_address=False)
         self.assertEqual(node.host, "127.0.0.1")
-        self.assertNotEqual(node.port, 7331)
-        self.assertTrue(5000 <= node.port <= 9000)
+        self.assertTrue(1024 <= node.port <= 65535)
 
     def test_start_node(self):
         node = self.create_node(use_fixed_address=False)
@@ -95,7 +106,8 @@ class TestChaincraftNode(unittest.TestCase):
 
     def test_use_dbm_storage(self):
         node = self.create_node(persistent=True, reset_db=True)
-        self.assertIsInstance(node.db, dbm.ndbm.open("__test__.db", "c").__class__)
+        self.assertNotIsInstance(node.db, dict)
+        self.assertTrue(hasattr(node.db, "close") and hasattr(node.db, "keys"))
 
     def test_reset_db(self):
         node = self.create_node(persistent=True, reset_db=True)

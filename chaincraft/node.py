@@ -2,7 +2,6 @@
 
 import json
 import inspect
-import random
 import socket
 import threading
 import time
@@ -16,6 +15,18 @@ from .state_memento import StateMemento
 from .shared_object import SharedObject, SharedObjectException
 from .shared_message import SharedMessage
 from .index_helper import IndexHelper
+
+
+def _pick_free_port(host: str, transport_protocol: str) -> int:
+    """Bind to port 0 and return an OS-assigned free port (avoids collisions)."""
+    socket_type = (
+        socket.SOCK_DGRAM if transport_protocol == "udp" else socket.SOCK_STREAM
+    )
+    with socket.socket(socket.AF_INET, socket_type) as probe:
+        if transport_protocol == "tcp":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind((host, 0))
+        return probe.getsockname()[1]
 
 
 class ChaincraftNode:
@@ -59,7 +70,7 @@ class ChaincraftNode:
             self.port: int = 21000
         else:
             self.host: str = "127.0.0.1"
-            self.port: int = random.randint(5000, 9000)
+            self.port: int = _pick_free_port(self.host, self.transport_protocol)
 
         self.db_name: str = f"node_{self.port}.db"
         self.persistent: bool = persistent
@@ -219,7 +230,8 @@ class ChaincraftNode:
             except OSError:
                 if self.use_fixed_address:
                     raise
-                self.port = random.randint(5000, 9000)
+                self.port = _pick_free_port(self.host, self.transport_protocol)
+                self.db_name = f"node_{self.port}.db"
 
         raise OSError("Failed to bind to a port after multiple attempts")
 
