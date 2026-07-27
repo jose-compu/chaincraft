@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Blockchain](https://img.shields.io/badge/blockchain-educational-blueviolet)](https://github.com/jio-gl/chaincraft)
 [![ECDSA](https://img.shields.io/badge/ECDSA-supported-green)](https://github.com/jio-gl/chaincraft)
+[![Schnorr](https://img.shields.io/badge/BIP--340%20Schnorr-supported-green)](https://github.com/jio-gl/chaincraft)
 [![Project Status](https://img.shields.io/badge/status-in%20development-yellow)](https://github.com/jio-gl/chaincraft)
 [![PyPI version](https://badge.fury.io/py/chaincraft.svg)](https://pypi.org/project/chaincraft/)
 [![PyPI Downloads](https://static.pepy.tech/badge/chaincraft)](https://pepy.tech/projects/chaincraft)
@@ -16,6 +17,7 @@ Chaincraft is a Python-based framework for building and experimenting with block
 ## Key Features
 
 - **Modular blockchain (0.6.0)**: Pluggable ledger, fee market, mempool, consensus, and fork choice via `BlockchainConfig`
+- **BIP-340 Schnorr (0.7.0)**: x-only secp256k1 signatures for Nostr-style digests; pure-Python by default, optional `coincurve`
 - **Decentralized protocols**: Configurable ChatGroup, pub/sub, and CRDT key-value store
 - **Consensus catalog**: Gossip, PoW, BFT, and DAG engines selectable by name
 - **Decentralized Network**: Built-in peer discovery, connection management, and message propagation  
@@ -57,8 +59,9 @@ pip install -e ".[dev]"
 
 ### Requirements
 
-- Python 3.8 or higher
-- `cryptography>=44.0.1`
+- Python 3.9 or higher
+- `cryptography>=48.0.1`
+- Optional: `coincurve>=21.0.0` for faster BIP-340 Schnorr (`pip install chaincraft[schnorr]`)
 
 ### Code quality (pre-commit hooks)
 
@@ -82,6 +85,18 @@ from chaincraft.shared_object import SharedObjectException
 # Cryptographic primitives
 from chaincraft.crypto_primitives.pow import ProofOfWorkPrimitive
 from chaincraft.crypto_primitives.sign import ECDSASignaturePrimitive
+from chaincraft.crypto_primitives.schnorr import SchnorrSignaturePrimitive
+```
+
+BIP-340 Schnorr uses a pure-Python backend by default (no native deps). For
+production / Nostr performance, install the optional backend:
+`pip install chaincraft[schnorr]` (selects `coincurve` at import time).
+
+```python
+prim = SchnorrSignaturePrimitive()
+prim.generate_key()
+sig = prim.sign(event_id_32_bytes)  # 64-byte Schnorr sig
+prim.verify(event_id_32_bytes, sig, prim.pubkey_hex)
 ```
 
 ## Quick Start
@@ -127,7 +142,7 @@ Chaincraft is built on several core components:
 - `ChaincraftNode`: Handles networking, peer discovery, and message gossip  
 - `SharedMessage`: Wraps and serializes data for network transmission  
 - `SharedObject`: Abstract base class for implementing distributed data structures  
-- **Cryptographic primitives**: PoW, VDF, secure ECDSA, and VRF implementations  
+- **Cryptographic primitives**: PoW, VDF, ECDSA, BIP-340 Schnorr, and VRF implementations  
 
 ## Usage
 

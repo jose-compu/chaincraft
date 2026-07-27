@@ -1,4 +1,4 @@
-# Chaincraft Protocol Implementation Specification v3 (0.6.0)
+# Chaincraft Protocol Implementation Specification v3 (0.7.0)
 
 You write protocol logic; Chaincraft handles networking, gossip, storage, peers,
 and concurrency.
@@ -6,6 +6,10 @@ and concurrency.
 **0.6.0** adds pluggable, swap-by-name components on the unchanged `SharedObject` /
 `SharedMessage` substrate: ledger, fees, mempool, consensus (`chaincraft.consensus`),
 beacon, protocols, and assembly via `BlockchainConfig`.
+
+**0.7.0** adds BIP-340 Schnorr (`SchnorrSignaturePrimitive`) with x-only 32-byte
+pubkeys for Nostr-style digests. Default backend is pure Python (stdlib); install
+`chaincraft[schnorr]` / `coincurve` for the native path (selected at import time).
 
 Two rules:
 

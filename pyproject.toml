@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chaincraft"
-version = "0.6.3"
+version = "0.7.0"
 description = "A platform for blockchain education and prototyping"
 readme = "README.md"
 license = { text = "MIT" }
@@ -35,12 +35,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+schnorr = [
+    "coincurve>=21.0.0",
+]
 dev = [
     "pytest>=6.0",
     "pytest-cov>=4.0",
     "hypothesis>=6.0",
     "flake8>=3.8.0",
     "black>=21.0.0",
+    "coincurve>=21.0.0",
 ]
 
 [tool.pytest.ini_options]
