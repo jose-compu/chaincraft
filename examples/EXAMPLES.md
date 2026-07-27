@@ -78,4 +78,4 @@ Full DAG Avalanche, Tendermint, PBFT, PoW, etc. are in ``chaincraft/consensus/``
 4. `consensus_demo.py` (core engine catalog)
 5. `beacon_demo.py` (randomness without ledger)
 
-See ``SPECS.md`` for the full 0.6.0 API reference.
+See ``SPECS.md`` for the full 0.7.0 API reference (includes BIP-340 Schnorr).
