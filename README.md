@@ -264,6 +264,10 @@ Contributions to Chaincraft are welcome! This is an educational project aimed at
 
 ## Current Status (Roadmap)
 
+### 0.7.0 (this release)
+
+- ✅ BIP-340 Schnorr (`SchnorrSignaturePrimitive`): x-only pubkeys, pure-Python default, optional `coincurve` — closes #102
+
 ### Roadmap to version 1.0.0
 
 - ✅ Gossip Protocol: Sharing JSON messages between nodes  
@@ -272,7 +276,7 @@ Contributions to Chaincraft are welcome! This is an educational project aimed at
 - ✅ Message Validation: Field and type validation with peer banning  
 - ✅ Shared Objects: State synchronization between nodes  
 - ✅ Merklelized Storage: Efficient state synchronization  
-- ✅ Additional Cryptographic Primitives  
+- ✅ Additional Cryptographic Primitives (ECDSA, VRF, PoW, VDF, BIP-340 Schnorr)  
 - ✅ Indexing (Validated Message Type can have some indexed fields)  
 - ✅ Consensus Mechanisms  
 - ✅ Proof of Work

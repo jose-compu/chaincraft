@@ -10,12 +10,30 @@ beacon, protocols, and assembly via `BlockchainConfig`.
 **0.7.0** adds BIP-340 Schnorr (`SchnorrSignaturePrimitive`) with x-only 32-byte
 pubkeys for Nostr-style digests. Default backend is pure Python (stdlib); install
 `chaincraft[schnorr]` / `coincurve` for the native path (selected at import time).
+This is the sole feature in the 0.7.0 release (see `CHANGELOG.md`, issue #102).
 
 Two rules:
 
 1. **Select by name** — each family has a registry and `get_*` helper.
 2. **Fail fast** — `BlockchainConfig.validate()` and component constructors reject
    impossible combinations (`ConfigError`, `ConsensusError`).
+
+## Cryptographic primitives (0.7.0)
+
+| Primitive | Module | Notes |
+|---|---|---|
+| ECDSA (secp256k1) | `crypto_primitives.sign` | DER + SHA-256 via `cryptography` |
+| BIP-340 Schnorr | `crypto_primitives.schnorr` | 32-byte digest in/out; x-only pubkey hex |
+| BIP-340 math | `crypto_primitives.bip340` | Pure-Python reference used as fallback |
+
+```python
+from chaincraft.crypto_primitives.schnorr import SchnorrSignaturePrimitive
+
+prim = SchnorrSignaturePrimitive()
+prim.generate_key()
+sig = prim.sign(event_id_32)           # 64-byte Schnorr signature
+ok = prim.verify(event_id_32, sig, prim.pubkey_hex)
+```
 
 ## What to implement
 
