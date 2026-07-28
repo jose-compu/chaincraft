@@ -1,6 +1,6 @@
 # Chaincraft
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Python Unit Tests](https://github.com/jio-gl/chaincraft/actions/workflows/python-app.yml/badge.svg)](https://github.com/jio-gl/chaincraft/actions/workflows/python-app.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Blockchain](https://img.shields.io/badge/blockchain-educational-blueviolet)](https://github.com/jio-gl/chaincraft)
@@ -20,12 +20,12 @@ Chaincraft is a Python-based framework for building and experimenting with block
 - **BIP-340 Schnorr (0.7.0)**: x-only secp256k1 signatures for Nostr-style digests; pure-Python by default, optional `coincurve`
 - **Decentralized protocols**: Configurable ChatGroup, pub/sub, and CRDT key-value store
 - **Consensus catalog**: Gossip, PoW, BFT, and DAG engines selectable by name
-- **Decentralized Network**: Built-in peer discovery, connection management, and message propagation  
-- **Shared Objects**: Extensible framework for maintaining distributed state across nodes  
-- **Cryptographic Primitives**: Implementation of essential blockchain cryptography  
-- **Persistence**: Optional persistent storage for nodes and messages  
-- **Data Validation**: Type checking and schema validation for messages  
-- **Merklelized Storage**: Support for efficient state synchronization  
+- **Decentralized Network**: Built-in peer discovery, connection management, and message propagation
+- **Shared Objects**: Extensible framework for maintaining distributed state across nodes
+- **Cryptographic Primitives**: Implementation of essential blockchain cryptography
+- **Persistence**: Optional persistent storage for nodes and messages
+- **Data Validation**: Type checking and schema validation for messages
+- **Merklelized Storage**: Support for efficient state synchronization
 
 ## Installation
 
@@ -139,10 +139,10 @@ node.create_shared_message("Hello, Chaincraft!")
 
 Chaincraft is built on several core components:
 
-- `ChaincraftNode`: Handles networking, peer discovery, and message gossip  
-- `SharedMessage`: Wraps and serializes data for network transmission  
-- `SharedObject`: Abstract base class for implementing distributed data structures  
-- **Cryptographic primitives**: PoW, VDF, ECDSA, BIP-340 Schnorr, and VRF implementations  
+- `ChaincraftNode`: Handles networking, peer discovery, and message gossip
+- `SharedMessage`: Wraps and serializes data for network transmission
+- `SharedObject`: Abstract base class for implementing distributed data structures
+- **Cryptographic primitives**: PoW, VDF, ECDSA, BIP-340 Schnorr, and VRF implementations
 
 ## Usage
 
@@ -174,23 +174,23 @@ class MySharedState(SharedObject):
     def __init__(self):
         self.state = {}
         self.chain = []  # For merklelized sync
-    
+
     def is_valid(self, message: SharedMessage) -> bool:
         # Validate incoming messages
         return isinstance(message.data, dict) and "key" in message.data
-        
+
     def add_message(self, message: SharedMessage) -> None:
         # Update state based on message
         self.state[message.data["key"]] = message.data["value"]
         self.chain.append(message.data)
-        
+
     def is_merkelized(self) -> bool:
         return True
-        
+
     def get_latest_digest(self) -> str:
         # Return latest state digest for sync
         return hashlib.sha256(json.dumps(self.chain).encode()).hexdigest()
-    
+
     # Additional required methods...
 ```
 
@@ -212,19 +212,19 @@ is_valid = pow_primitive.verify_proof(challenge, nonce, hash_hex)
 
 Chaincraft provides the building blocks for implementing various blockchain designs:
 
-- **Proof of Work Blockchains**: Using the PoW primitive  
-- **State-Based Applications**: Using `SharedObject`s for consensus  
-- **Transaction Validation**: Using the message validation framework  
-- **Custom Consensus Mechanisms**: By extending `SharedObject`s with validation rules  
+- **Proof of Work Blockchains**: Using the PoW primitive
+- **State-Based Applications**: Using `SharedObject`s for consensus
+- **Transaction Validation**: Using the message validation framework
+- **Custom Consensus Mechanisms**: By extending `SharedObject`s with validation rules
 
 ## Examples
 
 The project includes various **examples**:
 
-- **Simple Blockchain**: A basic blockchain with PoW consensus  
-- **Message Chain**: A merklelized append-only log of messages  
-- **ECDSA Transactions**: Signed transactions with balance tracking  
-- **Chatroom**: A real-time chat example with auto-accept membership  
+- **Simple Blockchain**: A basic blockchain with PoW consensus
+- **Message Chain**: A merklelized append-only log of messages
+- **ECDSA Transactions**: Signed transactions with balance tracking
+- **Chatroom**: A real-time chat example with auto-accept membership
   - See [`examples/chatroom.md`](examples/chatroom.md) for details!
 
 ## Running Tests
@@ -251,11 +251,11 @@ python -m unittest -v -k test_local_discovery_enabled tests/test_local_discovery
 
 Chaincraft is designed to help explore blockchain tradeoffs:
 
-- **Blockchain Trilemma**:  
+- **Blockchain Trilemma**:
   - Security vs. Scalability vs. Decentralization
-- **Time Synchronization**:  
+- **Time Synchronization**:
   - Asynchronous vs. Time-Bounded vs. Synchronized
-- **Identity Models**:  
+- **Identity Models**:
   - Anonymous vs. Resource-Based vs. Identity-Based
 
 ## Contributing
@@ -270,24 +270,24 @@ Contributions to Chaincraft are welcome! This is an educational project aimed at
 
 ### Roadmap to version 1.0.0
 
-- ✅ Gossip Protocol: Sharing JSON messages between nodes  
-- ✅ Persistent Storage: Key-value storage for messages  
-- ✅ Peer Discovery: Global and local node discovery  
-- ✅ Message Validation: Field and type validation with peer banning  
-- ✅ Shared Objects: State synchronization between nodes  
-- ✅ Merklelized Storage: Efficient state synchronization  
-- ✅ Additional Cryptographic Primitives (ECDSA, VRF, PoW, VDF, BIP-340 Schnorr)  
-- ✅ Indexing (Validated Message Type can have some indexed fields)  
-- ✅ Consensus Mechanisms  
+- ✅ Gossip Protocol: Sharing JSON messages between nodes
+- ✅ Persistent Storage: Key-value storage for messages
+- ✅ Peer Discovery: Global and local node discovery
+- ✅ Message Validation: Field and type validation with peer banning
+- ✅ Shared Objects: State synchronization between nodes
+- ✅ Merklelized Storage: Efficient state synchronization
+- ✅ Additional Cryptographic Primitives (ECDSA, VRF, PoW, VDF, BIP-340 Schnorr)
+- ✅ Indexing (Validated Message Type can have some indexed fields)
+- ✅ Consensus Mechanisms
 - ✅ Proof of Work
 - ✅ Practical Byzantine Fault Tolerance (PBFT) or Tenderming (simpler)
-- ⬜ Transaction Validation for Ledgers (Balance-based and UTXO-based) 
-- ⬜ Proof of Stake  
-- ⬜ Proof of Authority  
-- ⬜ Proof of Elapsed Time  
-- ⬜ Smart Contracts  
-- ⬜ State Machine Replication  
-- ⬜ Sharding  
+- ⬜ Transaction Validation for Ledgers (Balance-based and UTXO-based)
+- ⬜ Proof of Stake
+- ⬜ Proof of Authority
+- ⬜ Proof of Elapsed Time
+- ⬜ Smart Contracts
+- ⬜ State Machine Replication
+- ⬜ Sharding
 
 ### Ideas for version 2.0.0
 
