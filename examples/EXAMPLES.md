@@ -12,6 +12,7 @@ beacon, protocols). The ``examples/`` folder keeps **CLIs**, **network demos**,
 |---|---|
 | `blockchain_demo.py` | ``BlockchainConfig`` + ``build_blockchain()`` |
 | `beacon_demo.py` | Modular ``chaincraft.beacon`` (no ledger) |
+| `schnorr_demo.py` | BIP-340 ``SchnorrSignaturePrimitive`` sign/verify |
 | `consensus_demo.py` | ``get_consensus_engine()`` across families |
 | `consensus_gossip_demo.py` | Gossip family (`relay`, `hashgraph`) |
 | `consensus_bft_demo.py` | BFT family (`pbft`, `hotstuff`) |
@@ -24,6 +25,7 @@ beacon, protocols). The ``examples/`` folder keeps **CLIs**, **network demos**,
 ```bash
 python examples/blockchain_demo.py
 python examples/beacon_demo.py
+python examples/schnorr_demo.py
 python examples/consensus_demo.py
 python examples/consensus_gossip_demo.py
 python examples/consensus_bft_demo.py
