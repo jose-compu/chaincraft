@@ -34,7 +34,7 @@ Trusted publishing is the modern, secure way to publish packages to PyPI without
 
 The GitHub workflow (`.github/workflows/publish-to-pypi.yml`) is triggered when you create a new release:
 
-1. **Test Phase**: Runs tests across multiple Python versions (3.8-3.12)
+1. **Test Phase**: Runs tests across multiple Python versions (3.9-3.12)
 2. **Build Phase**: Builds the package (both source distribution and wheel)
 3. **Publish Phase**: Publishes to PyPI using trusted publishing
 
