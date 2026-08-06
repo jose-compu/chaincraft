@@ -260,7 +260,8 @@ Chaincraft is designed to help explore blockchain tradeoffs:
 
 ## Contributing
 
-Contributions to Chaincraft are welcome! This is an educational project aimed at helping developers understand blockchain concepts through hands-on implementation.
+Contributions to Chaincraft are welcome! This is an educational project aimed at helping developers understand blockchain concepts through hands-on implementation.\
+Please see our [Contributing Guide](CONTRIBUTING.md) for instructions on setting up your environment, running tests, and opening pull requests.
 
 ## Current Status (Roadmap)
 
