@@ -118,10 +118,20 @@ class ChaincraftNode:
         if self.index_helper:
             self.indexed_fields = self.index_helper.indexed_fields
 
-        # NAT traversal settings
+        # NAT traversal settings (UDP only — hole punching / STUN are datagram-based)
+        if nat_traversal and self.transport_protocol != "udp":
+            raise ValueError("nat_traversal requires transport_protocol='udp'")
         self.nat_traversal: bool = nat_traversal
-        self.external_host: str = external_host or self.host
-        self.external_port: int = external_port or self.port
+        # True when the caller supplied a public address (skip STUN overwrite)
+        self._external_override: bool = (
+            external_host is not None or external_port is not None
+        )
+        self.external_host: str = (
+            external_host if external_host is not None else self.host
+        )
+        self.external_port: int = (
+            external_port if external_port is not None else self.port
+        )
         self.stun_servers: List[str] = stun_servers or [
             "stun.l.google.com:19302",
             "stun1.l.google.com:19302",
@@ -687,7 +697,13 @@ class ChaincraftNode:
         querying each configured STUN server in turn.  On success the
         result is cached in ``self.external_host`` / ``self.external_port``
         and returned.  Returns ``None`` when every STUN attempt fails.
+
+        If ``external_host`` / ``external_port`` were set at construction time,
+        STUN is skipped and the override is returned unchanged.
         """
+        if self._external_override:
+            return (self.external_host, self.external_port)
+
         for server_str in self.stun_servers:
             try:
                 stun_host, stun_port_str = server_str.rsplit(":", 1)
@@ -712,11 +728,11 @@ class ChaincraftNode:
         self, stun_host: str, stun_port: int
     ) -> Optional[Tuple[str, int]]:
         """
-        Send a STUN Binding Request (RFC 5389) on a temporary socket and
-        parse the mapped address from the response.
+        Send a STUN Binding Request (RFC 5389) and parse the mapped address.
 
-        A dedicated socket is used so that the main node socket is not
-        interrupted.
+        Prefers the node's bound UDP socket (before the listen thread starts)
+        so the XOR-MAPPED-ADDRESS port matches the port we advertise. Falls
+        back to a short-lived dedicated socket when unbound.
         """
         STUN_MAGIC_COOKIE = 0x2112A442
         transaction_id = os.urandom(12)
@@ -725,13 +741,26 @@ class ChaincraftNode:
             struct.pack(">HHI", 0x0001, 0, STUN_MAGIC_COOKIE) + transaction_id
         )
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            sock.settimeout(3)
-            sock.sendto(header, (stun_host, stun_port))
-            response, _ = sock.recvfrom(1024)
-        finally:
-            sock.close()
+        use_main = (
+            self.socket is not None and self.transport_protocol == "udp"
+        )
+        if use_main:
+            sock = self.socket
+            previous_timeout = sock.gettimeout()
+            try:
+                sock.settimeout(3)
+                sock.sendto(header, (stun_host, stun_port))
+                response, _ = sock.recvfrom(1024)
+            finally:
+                sock.settimeout(previous_timeout)
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                sock.settimeout(3)
+                sock.sendto(header, (stun_host, stun_port))
+                response, _ = sock.recvfrom(1024)
+            finally:
+                sock.close()
 
         return self._parse_stun_response(response, STUN_MAGIC_COOKIE)
 
@@ -794,7 +823,7 @@ class ChaincraftNode:
         reach this node.  The packets are sent from the main socket so that
         the NAT mapping created matches the port the node is advertising.
         """
-        if self.socket is None:
+        if self.socket is None or self.transport_protocol != "udp":
             return
         punch_payload = b"\x00"  # minimal sentinel byte
         attempts = 3
@@ -824,6 +853,8 @@ class ChaincraftNode:
         The relay is expected to forward this node's external address to the
         target so that both sides can punch holes concurrently.
         """
+        if self.socket is None:
+            return
         request_message = json.dumps(
             {
                 SharedMessage.NAT_TRAVERSAL_REQUEST: {
@@ -833,7 +864,7 @@ class ChaincraftNode:
             }
         )
         compressed_message = self.compress_message(request_message)
-        self.socket.sendto(compressed_message, (relay_host, relay_port))
+        self._send_bytes((relay_host, relay_port), compressed_message)
 
     def _handle_nat_traversal_request(
         self, shared_message: SharedMessage, addr: Tuple[str, int]
@@ -867,7 +898,7 @@ class ChaincraftNode:
         )
         compressed_response = self.compress_message(response_message)
         try:
-            self.socket.sendto(compressed_response, (target_host, target_port))
+            self._send_bytes((target_host, target_port), compressed_response)
             if self.debug:
                 print(
                     f"NAT traversal relay: forwarded {requester_addr} to "

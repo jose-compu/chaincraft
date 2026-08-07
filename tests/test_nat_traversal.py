@@ -155,6 +155,32 @@ class TestExternalAddressConfig(unittest.TestCase):
         finally:
             node.close()
 
+    def test_nat_traversal_rejects_tcp(self):
+        with self.assertRaises(ValueError):
+            ChaincraftNode(
+                persistent=False,
+                nat_traversal=True,
+                transport_protocol="tcp",
+            )
+
+    def test_manual_override_skips_stun_on_start(self):
+        """Constructor-supplied public address must not be overwritten by STUN."""
+        node = ChaincraftNode(
+            persistent=False,
+            nat_traversal=True,
+            external_host="203.0.113.10",
+            external_port=40000,
+            stun_servers=["stun.example.com:3478"],
+        )
+        try:
+            node._stun_request = MagicMock(return_value=("1.2.3.4", 11111))
+            node.start()
+            self.assertEqual(node.external_host, "203.0.113.10")
+            self.assertEqual(node.external_port, 40000)
+            node._stun_request.assert_not_called()
+        finally:
+            node.close()
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for discover_external_address (STUN mocked)
@@ -177,6 +203,21 @@ class TestDiscoverExternalAddress(unittest.TestCase):
         self.assertEqual(result, ("203.0.113.1", 30000))
         self.assertEqual(self.node.external_host, "203.0.113.1")
         self.assertEqual(self.node.external_port, 30000)
+
+    def test_override_short_circuits_discover(self):
+        node = ChaincraftNode(
+            persistent=False,
+            nat_traversal=True,
+            external_host="198.51.100.9",
+            external_port=45000,
+        )
+        try:
+            node._stun_request = MagicMock(return_value=("1.2.3.4", 9))
+            result = node.discover_external_address()
+            self.assertEqual(result, ("198.51.100.9", 45000))
+            node._stun_request.assert_not_called()
+        finally:
+            node.close()
 
     def test_all_stun_servers_fail_returns_none(self):
         self.node._stun_request = MagicMock(side_effect=OSError("network error"))
