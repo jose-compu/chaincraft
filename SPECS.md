@@ -102,7 +102,8 @@ listener thread. Do not spawn threads or manage sockets yourself.
 
 ## NAT traversal (UDP)
 
-Optional. Enable with `ChaincraftNode(nat_traversal=True)` (requires
+Optional. Implementation: `chaincraft.nat_traversal.NatTraversal` (attached as
+`node.nat`). Enable with `ChaincraftNode(nat_traversal=True)` (requires
 `transport_protocol="udp"`). On `start()`, the node discovers a public
 address via STUN (RFC 5389) unless `external_host` / `external_port` were
 set explicitly (manual override skips STUN). Peer discovery may carry

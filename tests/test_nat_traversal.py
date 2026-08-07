@@ -78,7 +78,7 @@ class TestStunResponseParser(unittest.TestCase):
         data = _build_stun_success_response(
             self.txn, self.magic, "1.2.3.4", 12345, use_xor=True
         )
-        result = self.node._parse_stun_response(data, self.magic)
+        result = self.node.nat.parse_stun_response(data, self.magic)
         self.assertIsNotNone(result)
         self.assertEqual(result, ("1.2.3.4", 12345))
 
@@ -86,14 +86,14 @@ class TestStunResponseParser(unittest.TestCase):
         data = _build_stun_success_response(
             self.txn, self.magic, "5.6.7.8", 54321, use_xor=False
         )
-        result = self.node._parse_stun_response(data, self.magic)
+        result = self.node.nat.parse_stun_response(data, self.magic)
         self.assertIsNotNone(result)
         self.assertEqual(result, ("5.6.7.8", 54321))
 
     def test_wrong_message_type_returns_none(self):
         # Craft a response with type 0x0100 (Binding Error) instead of 0x0101
         data = struct.pack(">HHI", 0x0100, 0, self.magic) + self.txn
-        result = self.node._parse_stun_response(data, self.magic)
+        result = self.node.nat.parse_stun_response(data, self.magic)
         self.assertIsNone(result)
 
     def test_wrong_magic_cookie_returns_none(self):
@@ -101,11 +101,11 @@ class TestStunResponseParser(unittest.TestCase):
             self.txn, self.magic, "1.2.3.4", 9999, use_xor=True
         )
         # Replace with a different magic cookie in the parsing call
-        result = self.node._parse_stun_response(data, 0xDEADBEEF)
+        result = self.node.nat.parse_stun_response(data, 0xDEADBEEF)
         self.assertIsNone(result)
 
     def test_too_short_returns_none(self):
-        result = self.node._parse_stun_response(b"\x00" * 10, self.magic)
+        result = self.node.nat.parse_stun_response(b"\x00" * 10, self.magic)
         self.assertIsNone(result)
 
 
@@ -173,11 +173,11 @@ class TestExternalAddressConfig(unittest.TestCase):
             stun_servers=["stun.example.com:3478"],
         )
         try:
-            node._stun_request = MagicMock(return_value=("1.2.3.4", 11111))
+            node.nat.stun_request = MagicMock(return_value=("1.2.3.4", 11111))
             node.start()
             self.assertEqual(node.external_host, "203.0.113.10")
             self.assertEqual(node.external_port, 40000)
-            node._stun_request.assert_not_called()
+            node.nat.stun_request.assert_not_called()
         finally:
             node.close()
 
@@ -198,7 +198,7 @@ class TestDiscoverExternalAddress(unittest.TestCase):
         self.node.close()
 
     def test_successful_stun_updates_external_address(self):
-        self.node._stun_request = MagicMock(return_value=("203.0.113.1", 30000))
+        self.node.nat.stun_request = MagicMock(return_value=("203.0.113.1", 30000))
         result = self.node.discover_external_address()
         self.assertEqual(result, ("203.0.113.1", 30000))
         self.assertEqual(self.node.external_host, "203.0.113.1")
@@ -212,20 +212,20 @@ class TestDiscoverExternalAddress(unittest.TestCase):
             external_port=45000,
         )
         try:
-            node._stun_request = MagicMock(return_value=("1.2.3.4", 9))
+            node.nat.stun_request = MagicMock(return_value=("1.2.3.4", 9))
             result = node.discover_external_address()
             self.assertEqual(result, ("198.51.100.9", 45000))
-            node._stun_request.assert_not_called()
+            node.nat.stun_request.assert_not_called()
         finally:
             node.close()
 
     def test_all_stun_servers_fail_returns_none(self):
-        self.node._stun_request = MagicMock(side_effect=OSError("network error"))
+        self.node.nat.stun_request = MagicMock(side_effect=OSError("network error"))
         result = self.node.discover_external_address()
         self.assertIsNone(result)
 
     def test_stun_returns_none_falls_through_to_none(self):
-        self.node._stun_request = MagicMock(return_value=None)
+        self.node.nat.stun_request = MagicMock(return_value=None)
         result = self.node.discover_external_address()
         self.assertIsNone(result)
 
@@ -239,7 +239,7 @@ class TestDiscoverExternalAddress(unittest.TestCase):
         def side_effect(host, port):
             return responses.pop(0)
 
-        self.node._stun_request = MagicMock(side_effect=side_effect)
+        self.node.nat.stun_request = MagicMock(side_effect=side_effect)
         result = self.node.discover_external_address()
         self.assertEqual(result, ("1.2.3.4", 11111))
 

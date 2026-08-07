@@ -3,7 +3,6 @@
 import json
 import inspect
 import socket
-import struct
 import threading
 import time
 import zlib
@@ -16,6 +15,7 @@ from .state_memento import StateMemento
 from .shared_object import SharedObject, SharedObjectException
 from .shared_message import SharedMessage
 from .index_helper import IndexHelper
+from .nat_traversal import NatTraversal, HOLE_PUNCH_SENTINEL
 
 
 def _pick_free_port(host: str, transport_protocol: str) -> int:
@@ -118,24 +118,14 @@ class ChaincraftNode:
         if self.index_helper:
             self.indexed_fields = self.index_helper.indexed_fields
 
-        # NAT traversal settings (UDP only — hole punching / STUN are datagram-based)
-        if nat_traversal and self.transport_protocol != "udp":
-            raise ValueError("nat_traversal requires transport_protocol='udp'")
-        self.nat_traversal: bool = nat_traversal
-        # True when the caller supplied a public address (skip STUN overwrite)
-        self._external_override: bool = (
-            external_host is not None or external_port is not None
+        # NAT traversal (implementation lives in chaincraft.nat_traversal)
+        self.nat = NatTraversal(
+            self,
+            enabled=nat_traversal,
+            external_host=external_host,
+            external_port=external_port,
+            stun_servers=stun_servers,
         )
-        self.external_host: str = (
-            external_host if external_host is not None else self.host
-        )
-        self.external_port: int = (
-            external_port if external_port is not None else self.port
-        )
-        self.stun_servers: List[str] = stun_servers or [
-            "stun.l.google.com:19302",
-            "stun1.l.google.com:19302",
-        ]
 
     def set_indexed_fields(self, message_type: str, fields: List[str]) -> None:
         """
@@ -228,8 +218,8 @@ class ChaincraftNode:
         self._bind_socket()
         self.is_running = True
 
-        if self.nat_traversal:
-            self.discover_external_address()
+        if self.nat.enabled:
+            self.nat.discover_external_address()
 
         threading.Thread(target=self.listen_for_messages, daemon=True).start()
         threading.Thread(target=self.gossip, daemon=True).start()
@@ -287,7 +277,7 @@ class ChaincraftNode:
                 if self.transport_protocol == "udp":
                     compressed_data, addr = self.socket.recvfrom(self.max_msg_size)
                     # Silently discard NAT hole-punch sentinel packets (1 zero byte)
-                    if compressed_data == b"\x00":
+                    if compressed_data == HOLE_PUNCH_SENTINEL:
                         continue
                 else:
                     conn, addr = self.socket.accept()
@@ -428,10 +418,8 @@ class ChaincraftNode:
         discovery_payload: Dict[str, Any] = {
             SharedMessage.PEER_DISCOVERY: f"{self.host}:{self.port}"
         }
-        if self.nat_traversal:
-            discovery_payload["external_address"] = (
-                f"{self.external_host}:{self.external_port}"
-            )
+        if self.nat.enabled:
+            discovery_payload["external_address"] = self.nat.external_address_str()
         discovery_message = json.dumps(discovery_payload)
         compressed_message = self.compress_message(discovery_message)
         self._send_bytes((host, port), compressed_message)
@@ -536,9 +524,9 @@ class ChaincraftNode:
                 elif SharedMessage.REQUEST_SHARED_OBJECT_UPDATE in shared_message.data:
                     self._handle_shared_object_update_request(shared_message, addr)
                 elif SharedMessage.NAT_TRAVERSAL_REQUEST in shared_message.data:
-                    self._handle_nat_traversal_request(shared_message, addr)
+                    self.nat.handle_request(shared_message, addr)
                 elif SharedMessage.NAT_TRAVERSAL_RESPONSE in shared_message.data:
-                    self._handle_nat_traversal_response(shared_message, addr)
+                    self.nat.handle_response(shared_message, addr)
 
             # if valid types, process
             self._handle_shared_message(shared_message, message, message_hash, addr)
@@ -646,10 +634,10 @@ class ChaincraftNode:
         host, port = peer_address.split(":")
 
         external_address: Optional[str] = shared_message.data.get("external_address")
-        if self.nat_traversal and external_address:
+        if self.nat.enabled and external_address:
             ext_host, ext_port_str = external_address.split(":")
             ext_port = int(ext_port_str)
-            self.initiate_hole_punch(ext_host, ext_port)
+            self.nat.initiate_hole_punch(ext_host, ext_port)
             self.connect_to_peer(ext_host, ext_port, discovery=True)
         else:
             self.connect_to_peer(host, int(port), discovery=True)
@@ -688,253 +676,74 @@ class ChaincraftNode:
             del self.waiting_local_peer[peer]
 
     # ------------------------------------------------------------------ #
-    #  NAT traversal methods                                               #
+    #  NAT traversal (thin delegates → chaincraft.nat_traversal)           #
     # ------------------------------------------------------------------ #
 
+    @property
+    def nat_traversal(self) -> bool:
+        return self.nat.enabled
+
+    @nat_traversal.setter
+    def nat_traversal(self, value: bool) -> None:
+        self.nat.enabled = value
+
+    @property
+    def external_host(self) -> str:
+        return self.nat.external_host
+
+    @external_host.setter
+    def external_host(self, value: str) -> None:
+        self.nat.external_host = value
+
+    @property
+    def external_port(self) -> int:
+        return self.nat.external_port
+
+    @external_port.setter
+    def external_port(self, value: int) -> None:
+        self.nat.external_port = value
+
+    @property
+    def stun_servers(self) -> List[str]:
+        return self.nat.stun_servers
+
+    @stun_servers.setter
+    def stun_servers(self, value: List[str]) -> None:
+        self.nat.stun_servers = value
+
     def discover_external_address(self) -> Optional[Tuple[str, int]]:
-        """
-        Attempt to discover this node's external (public) IP and port by
-        querying each configured STUN server in turn.  On success the
-        result is cached in ``self.external_host`` / ``self.external_port``
-        and returned.  Returns ``None`` when every STUN attempt fails.
-
-        If ``external_host`` / ``external_port`` were set at construction time,
-        STUN is skipped and the override is returned unchanged.
-        """
-        if self._external_override:
-            return (self.external_host, self.external_port)
-
-        for server_str in self.stun_servers:
-            try:
-                stun_host, stun_port_str = server_str.rsplit(":", 1)
-                stun_port = int(stun_port_str)
-                result = self._stun_request(stun_host, stun_port)
-                if result:
-                    self.external_host, self.external_port = result
-                    if self.debug:
-                        print(
-                            f"NAT traversal: external address discovered "
-                            f"{self.external_host}:{self.external_port}"
-                        )
-                    return result
-            except Exception as e:
-                if self.debug:
-                    print(f"STUN request to {server_str} failed: {e}")
-        if self.debug:
-            print("NAT traversal: could not discover external address via STUN")
-        return None
+        """Discover public address via STUN (see ``NatTraversal``)."""
+        return self.nat.discover_external_address()
 
     def _stun_request(
         self, stun_host: str, stun_port: int
     ) -> Optional[Tuple[str, int]]:
-        """
-        Send a STUN Binding Request (RFC 5389) and parse the mapped address.
-
-        Prefers the node's bound UDP socket (before the listen thread starts)
-        so the XOR-MAPPED-ADDRESS port matches the port we advertise. Falls
-        back to a short-lived dedicated socket when unbound.
-        """
-        STUN_MAGIC_COOKIE = 0x2112A442
-        transaction_id = os.urandom(12)
-        # STUN message: type(2) + length(2) + magic cookie(4) + txn id(12)
-        header = (
-            struct.pack(">HHI", 0x0001, 0, STUN_MAGIC_COOKIE) + transaction_id
-        )
-
-        use_main = (
-            self.socket is not None and self.transport_protocol == "udp"
-        )
-        if use_main:
-            sock = self.socket
-            previous_timeout = sock.gettimeout()
-            try:
-                sock.settimeout(3)
-                sock.sendto(header, (stun_host, stun_port))
-                response, _ = sock.recvfrom(1024)
-            finally:
-                sock.settimeout(previous_timeout)
-        else:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                sock.settimeout(3)
-                sock.sendto(header, (stun_host, stun_port))
-                response, _ = sock.recvfrom(1024)
-            finally:
-                sock.close()
-
-        return self._parse_stun_response(response, STUN_MAGIC_COOKIE)
+        return self.nat.stun_request(stun_host, stun_port)
 
     def _parse_stun_response(
         self, data: bytes, magic_cookie: int
     ) -> Optional[Tuple[str, int]]:
-        """
-        Parse a STUN Binding Success Response (RFC 5389) and return the
-        mapped ``(ip, port)`` tuple, or ``None`` when parsing fails.
-
-        Both the legacy MAPPED-ADDRESS (0x0001) and the XOR-MAPPED-ADDRESS
-        (0x0020) attributes are handled; XOR-MAPPED-ADDRESS takes precedence.
-        """
-        if len(data) < 20:
-            return None
-
-        msg_type, _msg_length, cookie = struct.unpack(">HHI", data[:8])
-        if msg_type != 0x0101:  # Binding Success Response
-            return None
-        if cookie != magic_cookie:
-            return None
-
-        mapped: Optional[Tuple[str, int]] = None
-        offset = 20
-        while offset + 4 <= len(data):
-            attr_type, attr_length = struct.unpack(">HH", data[offset: offset + 4])
-            offset += 4
-            attr_value = data[offset: offset + attr_length]
-            # Advance past the attribute value (padded to 4-byte boundary)
-            offset += attr_length + ((-attr_length) % 4)
-
-            if attr_type == 0x0001 and attr_length >= 8:
-                # MAPPED-ADDRESS: family(1) + family_byte(1) + port(2) + ip(4)
-                if attr_value[1] == 0x01:  # IPv4
-                    port = struct.unpack(">H", attr_value[2:4])[0]
-                    ip = ".".join(str(b) for b in attr_value[4:8])
-                    if mapped is None:
-                        mapped = (ip, port)
-
-            elif attr_type == 0x0020 and attr_length >= 8:
-                # XOR-MAPPED-ADDRESS (preferred per RFC 5389)
-                if attr_value[1] == 0x01:  # IPv4
-                    xored_port = struct.unpack(">H", attr_value[2:4])[0]
-                    port = xored_port ^ (magic_cookie >> 16)
-                    xored_ip = struct.unpack(">I", attr_value[4:8])[0]
-                    ip_int = xored_ip ^ magic_cookie
-                    ip = ".".join(
-                        str((ip_int >> (24 - 8 * i)) & 0xFF) for i in range(4)
-                    )
-                    mapped = (ip, port)  # XOR overrides MAPPED-ADDRESS
-
-        return mapped
+        return self.nat.parse_stun_response(data, magic_cookie)
 
     def initiate_hole_punch(self, target_host: str, target_port: int) -> None:
-        """
-        Perform UDP hole punching toward ``(target_host, target_port)``.
-
-        A series of small keep-alive packets are sent to open a pinhole in
-        the local NAT device so that inbound packets from the target can
-        reach this node.  The packets are sent from the main socket so that
-        the NAT mapping created matches the port the node is advertising.
-        """
-        if self.socket is None or self.transport_protocol != "udp":
-            return
-        punch_payload = b"\x00"  # minimal sentinel byte
-        attempts = 3
-        for _ in range(attempts):
-            try:
-                self.socket.sendto(punch_payload, (target_host, target_port))
-                if self.debug:
-                    print(
-                        f"NAT traversal: hole-punch packet sent to "
-                        f"{target_host}:{target_port}"
-                    )
-            except Exception as e:
-                if self.debug:
-                    print(
-                        f"NAT traversal: hole-punch to "
-                        f"{target_host}:{target_port} failed: {e}"
-                    )
+        """UDP hole punch toward a peer (see ``NatTraversal``)."""
+        self.nat.initiate_hole_punch(target_host, target_port)
 
     def send_nat_traversal_request(
         self, relay_host: str, relay_port: int, target_host: str, target_port: int
     ) -> None:
-        """
-        Ask the relay node at ``(relay_host, relay_port)`` to coordinate a
-        simultaneous hole-punch between this node and the target node at
-        ``(target_host, target_port)``.
-
-        The relay is expected to forward this node's external address to the
-        target so that both sides can punch holes concurrently.
-        """
-        if self.socket is None:
-            return
-        request_message = json.dumps(
-            {
-                SharedMessage.NAT_TRAVERSAL_REQUEST: {
-                    "requester": f"{self.external_host}:{self.external_port}",
-                    "target": f"{target_host}:{target_port}",
-                }
-            }
-        )
-        compressed_message = self.compress_message(request_message)
-        self._send_bytes((relay_host, relay_port), compressed_message)
+        """Ask a relay to introduce this node to a target (see ``NatTraversal``)."""
+        self.nat.send_request(relay_host, relay_port, target_host, target_port)
 
     def _handle_nat_traversal_request(
         self, shared_message: SharedMessage, addr: Tuple[str, int]
     ) -> None:
-        """
-        Act as a relay: forward the requester's external address to the
-        target so that both endpoints can perform simultaneous hole punching.
-        """
-        payload: Dict[str, str] = shared_message.data[
-            SharedMessage.NAT_TRAVERSAL_REQUEST
-        ]
-        requester_addr: str = payload.get("requester", "")
-        target_addr: str = payload.get("target", "")
-
-        if not requester_addr or not target_addr:
-            return
-
-        try:
-            target_host, target_port_str = target_addr.split(":")
-            target_port = int(target_port_str)
-        except ValueError:
-            return
-
-        # Notify the target about the requester's external address
-        response_message = json.dumps(
-            {
-                SharedMessage.NAT_TRAVERSAL_RESPONSE: {
-                    "peer": requester_addr,
-                }
-            }
-        )
-        compressed_response = self.compress_message(response_message)
-        try:
-            self._send_bytes((target_host, target_port), compressed_response)
-            if self.debug:
-                print(
-                    f"NAT traversal relay: forwarded {requester_addr} to "
-                    f"{target_host}:{target_port}"
-                )
-        except Exception as e:
-            if self.debug:
-                print(f"NAT traversal relay failed: {e}")
+        self.nat.handle_request(shared_message, addr)
 
     def _handle_nat_traversal_response(
         self, shared_message: SharedMessage, addr: Tuple[str, int]
     ) -> None:
-        """
-        Received a relay-forwarded peer address.  Attempt a hole punch and
-        then connect to the peer so that it joins the regular peer list.
-        """
-        payload: Dict[str, str] = shared_message.data[
-            SharedMessage.NAT_TRAVERSAL_RESPONSE
-        ]
-        peer_addr: str = payload.get("peer", "")
-        if not peer_addr:
-            return
-
-        try:
-            peer_host, peer_port_str = peer_addr.split(":")
-            peer_port = int(peer_port_str)
-        except ValueError:
-            return
-
-        self.initiate_hole_punch(peer_host, peer_port)
-        self.connect_to_peer(peer_host, peer_port, discovery=True)
-        if self.debug:
-            print(
-                f"NAT traversal: hole-punched and connected to "
-                f"{peer_host}:{peer_port}"
-            )
+        self.nat.handle_response(shared_message, addr)
 
     def is_message_accepted(self, message: str) -> bool:
         """
