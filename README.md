@@ -60,7 +60,7 @@ pip install -e ".[dev]"
 ### Requirements
 
 - Python 3.9 or higher
-- `cryptography>=48.0.1`
+- `cryptography>=50.0.0`
 - Optional: `coincurve>=21.0.0` for faster BIP-340 Schnorr (`pip install chaincraft[schnorr]`)
 
 ### Code quality (pre-commit hooks)
