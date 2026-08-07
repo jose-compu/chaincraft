@@ -510,25 +510,37 @@ class ChaincraftNode:
             else:
                 shared_message = SharedMessage.from_json(message)
 
-            # Additional data-based actions (peer discovery, local peers, etc.)
+            # Protocol control messages bypass SharedObject validation. Running them
+            # through is_valid() incorrectly strikes/bans peers (e.g. merkelized
+            # update requests) and can empty the peer list so application
+            # broadcasts never leave the originating node.
             if isinstance(shared_message.data, dict):
                 if SharedMessage.PEER_DISCOVERY in shared_message.data:
                     self._handle_peer_discovery(shared_message)
-                elif (
+                    # Preserve gossip of discovery advertisements.
+                    self._store_and_broadcast(message_hash, message)
+                    return
+                if (
                     SharedMessage.REQUEST_LOCAL_PEERS in shared_message.data
                     and self.local_discovery
                 ):
                     self._handle_local_peer_request(shared_message)
-                elif SharedMessage.LOCAL_PEERS in shared_message.data:
+                    return
+                if SharedMessage.LOCAL_PEERS in shared_message.data:
                     self._handle_local_peer_response(shared_message, addr)
-                elif SharedMessage.REQUEST_SHARED_OBJECT_UPDATE in shared_message.data:
+                    return
+                if SharedMessage.REQUEST_SHARED_OBJECT_UPDATE in shared_message.data:
+                    # Do not store: identical digests must remain re-handleable.
                     self._handle_shared_object_update_request(shared_message, addr)
-                elif SharedMessage.NAT_TRAVERSAL_REQUEST in shared_message.data:
+                    return
+                if SharedMessage.NAT_TRAVERSAL_REQUEST in shared_message.data:
                     self.nat.handle_request(shared_message, addr)
-                elif SharedMessage.NAT_TRAVERSAL_RESPONSE in shared_message.data:
+                    return
+                if SharedMessage.NAT_TRAVERSAL_RESPONSE in shared_message.data:
                     self.nat.handle_response(shared_message, addr)
+                    return
 
-            # if valid types, process
+            # Application payload: validate, store, gossip
             self._handle_shared_message(shared_message, message, message_hash, addr)
 
         except json.JSONDecodeError:
