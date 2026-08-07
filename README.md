@@ -253,18 +253,14 @@ Run a **specific test**:
 pytest tests/test_local_discovery.py -v -k test_local_discovery_enabled
 ```
 
-Some tests are marked `stress` - heavy, long-running tests (storage/memory/
-indexing at scale). They are *not* excluded by a plain `pytest tests` run;
-to skip them explicitly:
+Some tests are marked `stress` — heavy, long-running tests (storage/memory/
+indexing at scale). They are excluded by default via `addopts` in
+`pyproject.toml` (so a plain `pytest tests` / CI run skips them).
+
+To run only the stress suite:
 
 ```bash
-pytest tests -m "not stress"
-```
-
-To run only the stress suite (requires the `stress` extra):
-
-```bash
-pip install -e ".[stress]"
+pip install -e ".[dev,stress]"
 pytest tests -m stress
 ```
 
