@@ -100,6 +100,26 @@ P2P messages: top-level `"p2p"` key, handled in `handle_p2p`; respond with
 Protect shared state with `threading.Lock` if methods are called outside the
 listener thread. Do not spawn threads or manage sockets yourself.
 
+## NAT traversal (UDP)
+
+Optional. Implementation: `chaincraft.nat_traversal.NatTraversal` (attached as
+`node.nat`). Enable with `ChaincraftNode(nat_traversal=True)` (requires
+`transport_protocol="udp"`). On `start()`, the node discovers a public
+address via STUN (RFC 5389) unless `external_host` / `external_port` were
+set explicitly (manual override skips STUN). Peer discovery may carry
+`external_address`; receivers hole-punch with a 1-byte sentinel (silently
+dropped). Relays use `NAT_TRAVERSAL_REQUEST` / `NAT_TRAVERSAL_RESPONSE`.
+
+```python
+node = ChaincraftNode(nat_traversal=True)  # STUN on start()
+# or:
+node = ChaincraftNode(
+    nat_traversal=True,
+    external_host="203.0.113.10",
+    external_port=40000,
+)
+```
+
 ## Pluggable blockchain (0.6.0)
 
 | Family | Module | Names (examples) |
