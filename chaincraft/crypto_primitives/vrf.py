@@ -40,10 +40,7 @@ class ECDSAVRFPrimitive(KeyCryptoPrimitive):
         if not self.private_key:
             raise ValueError("Private key not generated or set.")
 
-        signature = self.private_key.sign(
-            data,
-            ec.ECDSA(hashes.SHA256())
-        )
+        signature = self.private_key.sign(data, ec.ECDSA(hashes.SHA256()))
         return signature
 
     def verify(self, data: bytes, signature: bytes, pub_key=None) -> bool:
@@ -56,11 +53,7 @@ class ECDSAVRFPrimitive(KeyCryptoPrimitive):
             pub_key = self.public_key
 
         try:
-            pub_key.verify(
-                signature,
-                data,
-                ec.ECDSA(hashes.SHA256())
-            )
+            pub_key.verify(signature, data, ec.ECDSA(hashes.SHA256()))
             return True
         except InvalidSignature:
             return False

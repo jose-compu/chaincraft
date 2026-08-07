@@ -3,7 +3,6 @@ import json
 import os
 import random
 import sys
-import threading
 import time
 
 # Try to import from installed package first, fall back to direct imports
@@ -61,7 +60,9 @@ class ChatroomCLI:
             port=port if port else random.randint(10000, 60000),
             local_discovery=True,
         )
-        self.chatroom_object = ChatroomObject()
+        self.chatroom_object = ChatroomObject(
+            on_message_added=self._on_chatroom_message
+        )
         self.node.add_shared_object(self.chatroom_object)
         self.node.start()
 
@@ -79,28 +80,11 @@ class ChatroomCLI:
         print(f"Type '{COLOR_BOLD}/help{COLOR_RESET}' to see commands.")
 
         self.current_chatroom = None
-        self.last_msg_count = {}
-        self.stop_print_thread = False
-        self.print_thread = threading.Thread(
-            target=self._background_printer, daemon=True
-        )
-        self.print_thread.start()
 
-    def _background_printer(self):
-        while not self.stop_print_thread:
-            for cname, data in self.chatroom_object.chatrooms.items():
-                msg_list = data["messages"]
-                old_count = self.last_msg_count.get(cname, 0)
-                new_count = len(msg_list)
-
-                if new_count > old_count:
-                    for i in range(old_count, new_count):
-                        msg = msg_list[i]
-                        self._maybe_print_chat_message(cname, msg)
-                        self._maybe_auto_accept(cname, msg)
-
-                    self.last_msg_count[cname] = new_count
-            time.sleep(1.0)
+    def _on_chatroom_message(self, chatroom_name: str, msg: dict) -> None:
+        """Called by ChatroomObject.add_message when a new message is added (ChaincraftNode handler thread)."""
+        self._maybe_print_chat_message(chatroom_name, msg)
+        self._maybe_auto_accept(chatroom_name, msg)
 
     def _maybe_print_chat_message(self, chatroom_name, msg):
         mtype = msg.get("message_type")
@@ -147,8 +131,6 @@ class ChatroomCLI:
                 self._sign_and_broadcast(accept_msg)
 
     def close(self):
-        self.stop_print_thread = True
-        time.sleep(1.1)
         self.node.close()
         print(f"{WARN_EMOJI} Node closed. Goodbye!")
 

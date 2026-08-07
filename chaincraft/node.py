@@ -1,7 +1,7 @@
 # chaincraft.py
 
 import json
-import random
+import inspect
 import socket
 import struct
 import threading
@@ -12,15 +12,30 @@ import dbm.ndbm
 import os
 from typing import List, Tuple, Dict, Union, Optional, Any, Set
 
+from .state_memento import StateMemento
 from .shared_object import SharedObject, SharedObjectException
 from .shared_message import SharedMessage
 from .index_helper import IndexHelper
+
+
+def _pick_free_port(host: str, transport_protocol: str) -> int:
+    """Bind to port 0 and return an OS-assigned free port (avoids collisions)."""
+    socket_type = (
+        socket.SOCK_DGRAM if transport_protocol == "udp" else socket.SOCK_STREAM
+    )
+    with socket.socket(socket.AF_INET, socket_type) as probe:
+        if transport_protocol == "tcp":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind((host, 0))
+        return probe.getsockname()[1]
 
 
 class ChaincraftNode:
     PEERS: str = "PEERS"
     BANNED_PEERS: str = "BANNED_PEERS"
     INDEXED_FIELDS: str = "INDEXED_FIELDS"
+    CORE_OBJECT_DB_PREFIX: str = "__core_object__:"
+    UDP_MAX_MESSAGE_SIZE: int = 65507
 
     def __init__(
         self,
@@ -34,6 +49,7 @@ class ChaincraftNode:
         shared_objects: Optional[List[SharedObject]] = None,
         port: Optional[int] = None,
         use_compression: bool = False,
+        transport_protocol: str = "udp",
         nat_traversal: bool = False,
         external_host: Optional[str] = None,
         external_port: Optional[int] = None,
@@ -46,7 +62,10 @@ class ChaincraftNode:
         self.use_fixed_address: bool = use_fixed_address
         self.indexed: bool = indexed
         self.use_compression: bool = use_compression
-        self.max_msg_size = 14000
+        self.transport_protocol: str = transport_protocol.lower()
+        if self.transport_protocol not in ("udp", "tcp"):
+            raise ValueError("transport_protocol must be either 'udp' or 'tcp'")
+        self.max_msg_size = self.UDP_MAX_MESSAGE_SIZE
 
         if port is not None:
             self.host: str = "127.0.0.1"
@@ -56,7 +75,7 @@ class ChaincraftNode:
             self.port: int = 21000
         else:
             self.host: str = "127.0.0.1"
-            self.port: int = random.randint(5000, 9000)
+            self.port: int = _pick_free_port(self.host, self.transport_protocol)
 
         self.db_name: str = f"node_{self.port}.db"
         self.persistent: bool = persistent
@@ -91,6 +110,8 @@ class ChaincraftNode:
         self.accepted_message_types: List[str] = []
         self.invalid_message_counts: Dict[Tuple[str, int], int] = {}
         self.shared_objects: List[SharedObject] = shared_objects or []
+        for obj in self.shared_objects:
+            self._attach_shared_object_context(obj)
 
         # Dictionary to store which fields should be indexed for each message type
         self.indexed_fields: Dict[str, List[str]] = {}
@@ -176,7 +197,15 @@ class ChaincraftNode:
         """
         Add a SharedObject for the node to validate/integrate messages.
         """
+        self._attach_shared_object_context(shared_object)
         self.shared_objects.append(shared_object)
+
+    def _attach_shared_object_context(self, shared_object: SharedObject) -> None:
+        """
+        Inject node context into shared objects that support it.
+        """
+        if hasattr(shared_object, "_attach_node"):
+            shared_object._attach_node(self)
 
     def start(self) -> None:
         """
@@ -198,19 +227,29 @@ class ChaincraftNode:
 
     def _bind_socket(self) -> None:
         """
-        Attempt to bind a UDP socket to the specified host/port (retry if needed).
+        Attempt to bind a socket to the specified host/port (retry if needed).
         """
         max_retries: int = 10
         for _ in range(max_retries):
             try:
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                socket_type = (
+                    socket.SOCK_DGRAM
+                    if self.transport_protocol == "udp"
+                    else socket.SOCK_STREAM
+                )
+                self.socket = socket.socket(socket.AF_INET, socket_type)
+                if self.transport_protocol == "tcp":
+                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 self.socket.bind((self.host, self.port))
+                if self.transport_protocol == "tcp":
+                    self.socket.listen(128)
                 print(f"Node started on {self.host}:{self.port}")
                 return
             except OSError:
                 if self.use_fixed_address:
                     raise
-                self.port = random.randint(5000, 9000)
+                self.port = _pick_free_port(self.host, self.transport_protocol)
+                self.db_name = f"node_{self.port}.db"
 
         raise OSError("Failed to bind to a port after multiple attempts")
 
@@ -235,20 +274,74 @@ class ChaincraftNode:
             try:
                 compressed_data: bytes
                 addr: Tuple[str, int]
-                compressed_data, addr = self.socket.recvfrom(self.max_msg_size)
-                # Silently discard NAT hole-punch sentinel packets (1 zero byte)
-                if compressed_data == b"\x00":
-                    continue
+                if self.transport_protocol == "udp":
+                    compressed_data, addr = self.socket.recvfrom(self.max_msg_size)
+                    # Silently discard NAT hole-punch sentinel packets (1 zero byte)
+                    if compressed_data == b"\x00":
+                        continue
+                else:
+                    conn, addr = self.socket.accept()
+                    with conn:
+                        compressed_data = self._recv_tcp_payload(conn)
+                    if compressed_data is None:
+                        continue
+                message: str = self.decompress_message(compressed_data)
+                # P2P messages: direct between two nodes, not stored/gossiped.
+                try:
+                    data = json.loads(message)
+                    if isinstance(data, dict) and "p2p" in data:
+                        for obj in self.shared_objects:
+                            if hasattr(obj, "handle_p2p"):
+                                obj.handle_p2p(addr, data)
+                        continue
+                except json.JSONDecodeError:
+                    pass
                 message_hash: str = self.hash_message(compressed_data)
                 # Only handle if we've never seen this message
                 if message_hash not in self.db:
-                    message: str = self.decompress_message(compressed_data)
                     self.handle_message(message, message_hash, addr)
             except OSError:
                 if not self.is_running:
                     break
                 else:
                     raise
+
+    def _recv_exact(self, conn: socket.socket, byte_count: int) -> Optional[bytes]:
+        """
+        Read exactly byte_count bytes from a TCP connection.
+        """
+        received = b""
+        while len(received) < byte_count:
+            chunk = conn.recv(byte_count - len(received))
+            if not chunk:
+                return None
+            received += chunk
+        return received
+
+    def _recv_tcp_payload(self, conn: socket.socket) -> Optional[bytes]:
+        """
+        Read one length-prefixed payload from a TCP connection.
+        """
+        header = self._recv_exact(conn, 4)
+        if header is None:
+            return None
+        payload_size = int.from_bytes(header, byteorder="big")
+        if payload_size < 0 or payload_size > self.max_msg_size:
+            return None
+        return self._recv_exact(conn, payload_size)
+
+    def _send_bytes(self, peer: Tuple[str, int], payload: bytes) -> None:
+        """
+        Send payload bytes to a peer using the configured transport.
+        """
+        if self.transport_protocol == "udp":
+            self.socket.sendto(payload, peer)
+            return
+
+        packet = len(payload).to_bytes(4, byteorder="big") + payload
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_socket:
+            tcp_socket.connect(peer)
+            tcp_socket.sendall(packet)
 
     def gossip(self) -> None:
         """
@@ -260,8 +353,7 @@ class ChaincraftNode:
                     keys_to_share: List[bytes] = [
                         key
                         for key in self.db.keys()
-                        if key != self.PEERS.encode()
-                        and key != self.BANNED_PEERS.encode()
+                        if not self._is_internal_db_key(key)
                     ]
                     for key in keys_to_share:
                         object_to_share: str = self._load_db_value(key)
@@ -269,6 +361,24 @@ class ChaincraftNode:
                 time.sleep(self.gossip_interval)
             except Exception as e:
                 print(f"Error in gossip: {e}")
+
+    def _is_internal_db_key(self, key: Union[str, bytes]) -> bool:
+        """
+        Return True if this key is node-internal and must not be gossiped.
+        """
+        if isinstance(key, bytes):
+            try:
+                decoded = key.decode()
+            except Exception:
+                decoded = ""
+        else:
+            decoded = key
+
+        if decoded in (self.PEERS, self.BANNED_PEERS, self.INDEXED_FIELDS):
+            return True
+        if decoded.startswith(self.CORE_OBJECT_DB_PREFIX):
+            return True
+        return False
 
     def connect_to_peer(self, host: str, port: int, discovery: bool = False) -> None:
         """
@@ -314,7 +424,7 @@ class ChaincraftNode:
             )
         discovery_message = json.dumps(discovery_payload)
         compressed_message = self.compress_message(discovery_message)
-        self.socket.sendto(compressed_message, (host, port))
+        self._send_bytes((host, port), compressed_message)
 
     def connect_to_peer_locally(self, host: str, port: int) -> None:
         """
@@ -332,7 +442,7 @@ class ChaincraftNode:
             {SharedMessage.REQUEST_LOCAL_PEERS: f"{self.host}:{self.port}"}
         )
         compressed_message = self.compress_message(request_message)
-        self.socket.sendto(compressed_message, (host, port))
+        self._send_bytes((host, port), compressed_message)
 
     def decompress_message(self, compressed_message: bytes) -> str:
         """
@@ -359,7 +469,7 @@ class ChaincraftNode:
 
         for peer in self.peers:
             try:
-                self.socket.sendto(compressed_message, peer)
+                self._send_bytes(peer, compressed_message)
                 # if self.debug:
                 #    print(f"Node {self.port}: Sent message to peer {peer}")
             except Exception as e:
@@ -375,6 +485,17 @@ class ChaincraftNode:
             self.save_peers()
 
         return message_hash
+
+    def send_to_peer(self, peer: Tuple[str, int], message: str) -> None:
+        """Send a message to a specific peer (unicast)."""
+        if not self.socket:
+            return
+        try:
+            compressed_message = self.compress_message(message)
+            self._send_bytes(peer, compressed_message)
+        except Exception as e:
+            if self.debug:
+                print(f"Node {self.port}: Failed send_to_peer {peer}: {e}")
 
     def handle_message(
         self, message: str, message_hash: str, addr: Tuple[str, int]
@@ -415,8 +536,20 @@ class ChaincraftNode:
         except json.JSONDecodeError:
             self.handle_invalid_message(addr)
         except Exception as e:
+            if self._is_expected_shutdown_error(e):
+                return
             print(f"❌ Error handling message: {str(e)}")
             self.handle_invalid_message(addr)
+
+    def _is_expected_shutdown_error(self, error: Exception) -> bool:
+        """
+        Return True for socket-close races during shutdown.
+        """
+        if self.is_running:
+            return False
+        if isinstance(error, OSError) and getattr(error, "errno", None) == 9:
+            return True
+        return "Bad file descriptor" in str(error)
 
     def _handle_shared_message(
         self,
@@ -442,14 +575,38 @@ class ChaincraftNode:
 
     def _process_shared_objects(self, shared_message: SharedMessage) -> None:
         """
-        Add the shared message to each SharedObject.
+        Add the shared message to each SharedObject in a linear pipeline.
+        Each object can emit a frontier memento that is passed to the next object.
         """
+        frontier_state: Optional[StateMemento] = None
         for obj in self.shared_objects:
-            obj.add_message(shared_message)
+            emitted_state: Optional[StateMemento]
+            if self._add_message_supports_frontier_state(obj):
+                emitted_state = obj.add_message(
+                    shared_message, frontier_state=frontier_state
+                )
+            else:
+                obj.add_message(shared_message)
+                emitted_state = None
+
+            if emitted_state is None and hasattr(obj, "emit_state_memento"):
+                emitted_state = obj.emit_state_memento()
+
+            if emitted_state is not None:
+                frontier_state = emitted_state
+
             if self.debug:
                 print(
                     f"Node {self.port}: Added message to shared object {type(obj).__name__}"
                 )
+
+    def _add_message_supports_frontier_state(self, obj: SharedObject) -> bool:
+        """
+        Detect whether a shared object accepts the optional frontier_state argument.
+        """
+        signature = inspect.signature(obj.add_message)
+        parameter_names = list(signature.parameters.keys())
+        return "frontier_state" in parameter_names
 
     def _store_and_broadcast(self, message_hash: str, message_str: str) -> None:
         """
@@ -501,7 +658,7 @@ class ChaincraftNode:
         )
         response_message: str = response_object.to_json()
         compressed_message: bytes = self.compress_message(response_message)
-        self.socket.sendto(compressed_message, (host, int(port)))
+        self._send_bytes((host, int(port)), compressed_message)
 
     def _handle_local_peer_response(
         self, shared_message: SharedMessage, addr: Tuple[str, int]
@@ -886,12 +1043,7 @@ class ChaincraftNode:
         new_object: SharedMessage = SharedMessage(data=data)
         if self.shared_objects:
             if all(obj.is_valid(new_object) for obj in self.shared_objects):
-                for obj in self.shared_objects:
-                    obj.add_message(new_object)
-                    if self.debug:
-                        print(
-                            f"Node {self.port}: Added message to shared object {type(obj).__name__}"
-                        )
+                self._process_shared_objects(new_object)
             else:
                 raise SharedObjectException("Invalid message for shared objects")
 
@@ -981,7 +1133,9 @@ class ChaincraftNode:
         Request an update for a shared object with the given class name and digest.
         """
         if self.debug:
-            print(f"\n📤 Requesting update for {class_name} with digest {digest[:8]}...")
+            print(
+                f"\n📤 Requesting update for {class_name} with digest {digest[:8]}..."
+            )
         message: SharedMessage = SharedMessage(
             data={
                 SharedMessage.REQUEST_SHARED_OBJECT_UPDATE: {
@@ -1047,7 +1201,7 @@ class ChaincraftNode:
                                     f"📤 Sending next hash {idx + 1}/{len(messages_to_gossip)} to {addr}: {message.data[:8]}..."
                                 )
                             compressed_message: bytes = self.compress_message(json_msg)
-                            self.socket.sendto(compressed_message, addr)
+                            self._send_bytes(addr, compressed_message)
                             if self.debug:
                                 print(f"✅ Send to {addr} successful")
                         except Exception as e:

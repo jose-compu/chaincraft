@@ -40,7 +40,7 @@ def public_key_to_address(public_key: ec.EllipticCurvePublicKey) -> str:
     # Get the public key in uncompressed form
     pub_key_bytes = public_key.public_bytes(
         encoding=serialization.Encoding.X962,
-        format=serialization.PublicFormat.UncompressedPoint
+        format=serialization.PublicFormat.UncompressedPoint,
     )
 
     # Remove the first byte (0x04 prefix for uncompressed keys)

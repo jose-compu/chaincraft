@@ -164,7 +164,10 @@ def wait_for_chain_sync(nodes, expected_chain_length, timeout=30):
     last_status_time = start_time
     check_interval = 0.1  # Start with fast checking
 
-    print(f"Waiting for chain sync to length {expected_chain_length} " f"(timeout: {timeout}s)")
+    print(
+        f"Waiting for chain sync to length {expected_chain_length} "
+        f"(timeout: {timeout}s)"
+    )
 
     while time.time() - start_time < timeout:
         current_time = time.time()
@@ -193,7 +196,9 @@ def wait_for_chain_sync(nodes, expected_chain_length, timeout=30):
             # Get expected chain from first node with required length
             for node in nodes:
                 if len(node.shared_objects[0].chain) >= expected_chain_length:
-                    expected_chain = node.shared_objects[0].chain[:expected_chain_length]
+                    expected_chain = node.shared_objects[0].chain[
+                        :expected_chain_length
+                    ]
                     break
 
             # Check if all nodes have the same chain prefix
@@ -230,7 +235,10 @@ def wait_for_chain_sync(nodes, expected_chain_length, timeout=30):
     # Check if chains are at least growing
     min_length = min(len(node.shared_objects[0].chain) for node in nodes)
     if min_length > 1:
-        print(f"⚠️ Chains are growing but didn't fully sync in time. " f"Min length: {min_length}")
+        print(
+            f"⚠️ Chains are growing but didn't fully sync in time. "
+            f"Min length: {min_length}"
+        )
     else:
         print("❌ Chains aren't growing properly")
 
@@ -259,7 +267,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
         for node in self.nodes:
             node.close()
 
-    def expect_exception(self, exception_type, expected_message, callable_obj, *args, **kwargs):
+    def expect_exception(
+        self, exception_type, expected_message, callable_obj, *args, **kwargs
+    ):
         """Helper method to test for exceptions without using assertRaises"""
         try:
             callable_obj(*args, **kwargs)
@@ -273,7 +283,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
                 print(f"✓ Exception correctly raised: {str(e)}")
                 return True
             else:
-                self.fail(f"Expected {exception_type.__name__} but got {type(e).__name__}: {str(e)}")
+                self.fail(
+                    f"Expected {exception_type.__name__} but got {type(e).__name__}: {str(e)}"
+                )
                 return False
 
     def test_shared_object_updates(self):
@@ -299,7 +311,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
             chain = node.shared_objects[0].chain
             for i in range(1, len(chain)):
                 expected_hash = hashlib.sha256(chain[i - 1].encode()).hexdigest()
-                self.assertEqual(chain[i], expected_hash, f"Hash chain broken at index {i}")
+                self.assertEqual(
+                    chain[i], expected_hash, f"Hash chain broken at index {i}"
+                )
 
     def test_concurrent_updates(self):
         """Test multiple nodes adding hashes concurrently"""
@@ -338,7 +352,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
         for i, node in enumerate(self.nodes):
             node_chain = node.shared_objects[0].chain
             print(f"Node {i} final chain: {[h[:8] for h in node_chain]}")
-            self.assertEqual(node_chain, first_chain, f"Node {i} chain doesn't match node 0 chain")
+            self.assertEqual(
+                node_chain, first_chain, f"Node {i} chain doesn't match node 0 chain"
+            )
             # Should at least include first added hash
             self.assertIn(
                 added_hashes[0],
@@ -387,7 +403,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
         for i in range(1, len(self.nodes)):
             try:
                 # Force direct message delivery to each node
-                self.nodes[i].handle_message(msg[0], "test", (self.nodes[0].host, self.nodes[0].port))
+                self.nodes[i].handle_message(
+                    msg[0], "test", (self.nodes[0].host, self.nodes[0].port)
+                )
                 print(f"Direct message to node {i} delivered")
             except Exception as e:
                 print(f"Error sending to node {i}: {e}")
@@ -418,7 +436,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
             print("Broadcasting to connected nodes...")
             for j in range(1, 4):  # Nodes 1-3
                 try:
-                    self.nodes[j].handle_message(msg[0], "test", (self.nodes[0].host, self.nodes[0].port))
+                    self.nodes[j].handle_message(
+                        msg[0], "test", (self.nodes[0].host, self.nodes[0].port)
+                    )
                 except Exception as e:
                     print(f"Error sending to node {j}: {e}")
 
@@ -480,7 +500,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
         for hash_val in new_hashes:
             try:
                 msg = SharedMessage(data=hash_val).to_json()
-                self.nodes[4].handle_message(msg, "test", (self.nodes[0].host, self.nodes[0].port))
+                self.nodes[4].handle_message(
+                    msg, "test", (self.nodes[0].host, self.nodes[0].port)
+                )
                 print(f"Directly sent hash {hash_val[:8]} to node 4")
                 time.sleep(0.5)
             except Exception as e:
@@ -506,10 +528,14 @@ class TestSharedObjectUpdates(unittest.TestCase):
             print("⚠️ Node 4 may not have received all hashes, but test continues")
 
         # Final verification - all nodes should now be in sync
-        final_result = wait_for_chain_sync(self.nodes, 2, timeout=60)  # Require at least 2 hashes
+        final_result = wait_for_chain_sync(
+            self.nodes, 2, timeout=60
+        )  # Require at least 2 hashes
 
         # Check that the chains are at least growing, even if not completely in sync
-        all_chains_growing = all(len(node.shared_objects[0].chain) > 1 for node in self.nodes)
+        all_chains_growing = all(
+            len(node.shared_objects[0].chain) > 1 for node in self.nodes
+        )
 
         # Test passes if either full sync or at least all chains are growing
         self.assertTrue(
@@ -549,7 +575,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
         # Verify no node accepted the invalid hash - this is the real test
         time.sleep(2)  # Give time for any potential sync
         for i, node in enumerate(self.nodes):
-            print(f"Checking node {i} chain: {[h[:8] for h in node.shared_objects[0].chain]}")
+            print(
+                f"Checking node {i} chain: {[h[:8] for h in node.shared_objects[0].chain]}"
+            )
             self.assertNotIn(invalid_hash, node.shared_objects[0].chain)
 
         print("✓ All nodes properly rejected the invalid hash")
@@ -584,7 +612,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
                 if i != j:
                     try:
                         # Reinforce connections
-                        self.nodes[i].connect_to_peer(self.nodes[j].host, self.nodes[j].port)
+                        self.nodes[i].connect_to_peer(
+                            self.nodes[j].host, self.nodes[j].port
+                        )
                         print(f"Reinforced connection: Node {i} → Node {j}")
                     except Exception:
                         # Connection already exists, which is fine
@@ -613,16 +643,22 @@ class TestSharedObjectUpdates(unittest.TestCase):
                         # Create a fresh message for each attempt
                         msg = self.nodes[0].create_shared_message(next_hash)
                         # Force direct message delivery
-                        self.nodes[j].handle_message(msg[0], "test", (self.nodes[0].host, self.nodes[0].port))
+                        self.nodes[j].handle_message(
+                            msg[0], "test", (self.nodes[0].host, self.nodes[0].port)
+                        )
                         success = True
                         print(f"✓ Hash delivered to node {j}")
                     except Exception as e:
                         retries += 1
-                        print(f"⚠️ Delivery attempt {retries}/{max_retries} to node {j} failed: {e}")
+                        print(
+                            f"⚠️ Delivery attempt {retries}/{max_retries} to node {j} failed: {e}"
+                        )
                         time.sleep(0.2)  # Brief delay before retry
 
                 if not success:
-                    print(f"❌ Failed to deliver hash to node {j} after {max_retries} attempts")
+                    print(
+                        f"❌ Failed to deliver hash to node {j} after {max_retries} attempts"
+                    )
 
             # Add a delay between hash additions
             time.sleep(0.5)
@@ -647,7 +683,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
                 continue
 
             if len(node.shared_objects[0].chain) < expected_length:
-                print(f"Node {i} needs sync: has {len(node.shared_objects[0].chain)} blocks, needs {expected_length}")
+                print(
+                    f"Node {i} needs sync: has {len(node.shared_objects[0].chain)} blocks, needs {expected_length}"
+                )
 
                 # First check which hashes are missing
                 existing_hashes = set(node.shared_objects[0].chain)
@@ -664,7 +702,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
                     try:
                         # Create message directly
                         msg = SharedMessage(data=hash_val).to_json()
-                        node.handle_message(msg, "test", (self.nodes[0].host, self.nodes[0].port))
+                        node.handle_message(
+                            msg, "test", (self.nodes[0].host, self.nodes[0].port)
+                        )
                         print(f"Sent hash {hash_val[:8]} to node {i}")
 
                         # Verify hash was added
@@ -677,11 +717,18 @@ class TestSharedObjectUpdates(unittest.TestCase):
                             # Try an alternate approach - use node's own add_digest method
                             if len(node.shared_objects[0].chain) > 0:
                                 prev_hash = node.shared_objects[0].chain[-1]
-                                if node.shared_objects[0].calculate_next_hash(prev_hash) == hash_val:
+                                if (
+                                    node.shared_objects[0].calculate_next_hash(
+                                        prev_hash
+                                    )
+                                    == hash_val
+                                ):
                                     print(f"Trying direct add_digest for node {i}")
                                     result = node.shared_objects[0].add_digest(hash_val)
                                     if result:
-                                        print(f"✓ Direct add_digest succeeded for hash {hash_val[:8]}")
+                                        print(
+                                            f"✓ Direct add_digest succeeded for hash {hash_val[:8]}"
+                                        )
                     except Exception:
                         # Log exception without using variable
                         print(f"Error sending hash to node {i}")
@@ -714,7 +761,9 @@ class TestSharedObjectUpdates(unittest.TestCase):
 
             if len(chain) < expected_length:
                 missing_sync.append(i)
-                print(f"⚠️ Node {i} chain didn't sync fully: only has {len(chain)} blocks")
+                print(
+                    f"⚠️ Node {i} chain didn't sync fully: only has {len(chain)} blocks"
+                )
             elif chain[:expected_length] != expected_chain[:expected_length]:
                 print(f"⚠️ Node {i} chain content doesn't match node 0")
 

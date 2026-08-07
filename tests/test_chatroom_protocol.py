@@ -406,16 +406,25 @@ class TestChatroomProtocol(unittest.TestCase):
                 "text": f"Bob says {i}",
             }
             self.sign_and_broadcast(self.alice_ecdsa, alice_msg)
+            time.sleep(0.1)
             self.sign_and_broadcast(self.bob_ecdsa, bob_msg)
+            time.sleep(0.1)
 
         # total: 1 CREATE + 2 REQ + 2 ACCEPT + 4 POST = 9
         self.assertTrue(self.wait_for_db_count(9, timeout=10))
+        time.sleep(0.5)
 
-        # Check final chat messages (dedup by signature in ChatroomObject)
+        # Check final chat messages (deduped in ChatGroup by payload id)
         for node in self.nodes:
             chat_obj = node.shared_objects[0]
             post_msgs = get_post_messages(chat_obj, room_name)
+            alice_msgs = [
+                m for m in post_msgs if m["public_key_pem"] == self.alice_pub_pem
+            ]
+            bob_msgs = [m for m in post_msgs if m["public_key_pem"] == self.bob_pub_pem]
             self.assertEqual(len(post_msgs), 4, "2 from Alice, 2 from Bob")
+            self.assertEqual(len(alice_msgs), 2)
+            self.assertEqual(len(bob_msgs), 2)
             texts = [m["text"] for m in post_msgs]
             self.assertIn("Alice says 0", texts)
             self.assertIn("Alice says 1", texts)

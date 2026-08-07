@@ -1,0 +1,19 @@
+#!/bin/sh
+# Pre-commit hook: run code quality tools.
+# Requires: flake8 (pip install -e ".[dev]")
+
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+# Use project venv if present
+if [ -d .venv ]; then
+    . .venv/bin/activate
+fi
+
+# Paths to check (excludes .venv)
+PATHS="chaincraft chaincraft_cli.py examples tests"
+
+echo "Running flake8..."
+flake8 $PATHS || exit 1
+
+echo "All checks passed."

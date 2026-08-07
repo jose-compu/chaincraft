@@ -11,6 +11,7 @@ try:
     from chaincraft.crypto_primitives.sign import ECDSASignaturePrimitive
     from chaincraft.crypto_primitives.vrf import ECDSAVRFPrimitive
     from chaincraft.crypto_primitives.encrypt import SymmetricEncryption
+    from examples.blockchain import BlockchainUtils
 except ImportError:
     # Add parent directory to path as fallback
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -19,6 +20,7 @@ except ImportError:
     from chaincraft.crypto_primitives.sign import ECDSASignaturePrimitive
     from chaincraft.crypto_primitives.vrf import ECDSAVRFPrimitive
     from chaincraft.crypto_primitives.encrypt import SymmetricEncryption
+    from examples.blockchain import BlockchainUtils
 
 
 class TestCryptoPrimitives(unittest.TestCase):
@@ -37,6 +39,34 @@ class TestCryptoPrimitives(unittest.TestCase):
 
         # Test with incorrect nonce
         self.assertFalse(pow_primitive.verify_proof(challenge, nonce + 1, hash_hex))
+
+        # Test with incorrect hash
+        bad_hash = "0" * len(hash_hex)
+        self.assertFalse(pow_primitive.verify_proof(challenge, nonce, bad_hash))
+
+    def test_pow_blockchain_utils_use_shared_primitive(self):
+        difficulty = 64
+        block_data = {
+            "index": 1,
+            "timestamp": 1234567890,
+            "transactions": [],
+            "previous_hash": "abc",
+            "miner": "miner-x",
+        }
+        nonce, block_hash = BlockchainUtils.find_proof_of_work(block_data, difficulty)
+        payload = dict(block_data)
+        payload["nonce"] = nonce
+        payload["hash"] = block_hash
+        self.assertTrue(
+            BlockchainUtils.verify_proof_of_work(payload, nonce, difficulty)
+        )
+
+        # Mutating any signed field must invalidate proof.
+        tampered = dict(payload)
+        tampered["previous_hash"] = "def"
+        self.assertFalse(
+            BlockchainUtils.verify_proof_of_work(tampered, nonce, difficulty)
+        )
 
     def test_vdf(self):
         # Use fewer iterations for testing speed

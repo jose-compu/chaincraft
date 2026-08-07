@@ -1,12 +1,23 @@
 """
-Configure pytest environment for chaincraft tests.
+Configure pytest for chaincraft tests.
 
-This file ensures the root directory is in the Python path
-so that imports work correctly in CI and local environments.
+Relies on ``pip install -e .`` (CI and local dev). No repo-root ``__init__.py`` —
+that file broke collection when the checkout directory name is not ``chaincraft``.
 """
 
+import glob
 import os
-import sys
 
-# Add the project root directory to Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_node_db_artifacts():
+    """Remove ndbm files left in the repo root after the test session."""
+    yield
+    for pattern in ("node_*.db*", "__test__.db*"):
+        for path in glob.glob(pattern):
+            try:
+                os.remove(path)
+            except OSError:
+                pass

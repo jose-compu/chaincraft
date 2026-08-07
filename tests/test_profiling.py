@@ -297,6 +297,127 @@ class TestChaincraftProfiling(unittest.TestCase):
             for node in nodes:
                 node.close()
 
+    def _run_transport_stress_benchmark(
+        self,
+        transport: str,
+        num_messages: int,
+        payload_size: int,
+        send_delay: float = 0.0001,
+    ):
+        """
+        Run a heavy sender->receiver benchmark over one transport and return metrics.
+        """
+        receiver_obj = SimpleSharedObject()
+        receiver = ChaincraftNode(
+            max_peers=5,
+            persistent=False,
+            debug=False,
+            port=random.randint(20000, 26000),
+            transport_protocol=transport,
+        )
+        sender = ChaincraftNode(
+            max_peers=5,
+            persistent=False,
+            debug=False,
+            port=random.randint(26001, 32000),
+            transport_protocol=transport,
+        )
+
+        receiver.add_shared_object(receiver_obj)
+        sender.add_shared_object(SimpleSharedObject())
+
+        try:
+            receiver.start()
+            sender.start()
+            sender.connect_to_peer(receiver.host, receiver.port)
+
+            # Give listener/gossip threads a brief stabilization window.
+            time.sleep(0.5)
+
+            payload = "X" * payload_size
+            start_send = time.perf_counter()
+            with profile(f"{transport}_stress_send"):
+                for i in range(num_messages):
+                    sender.create_shared_message(
+                        {
+                            "message_type": "TRANSPORT_STRESS",
+                            "transport": transport,
+                            "sequence": i,
+                            "payload": payload,
+                            "timestamp": time.time(),
+                        }
+                    )
+                    if send_delay > 0:
+                        time.sleep(send_delay)
+            end_send = time.perf_counter()
+
+            deadline = time.time() + 20
+            with profile(f"{transport}_stress_receive"):
+                while (
+                    len(receiver_obj.messages) < num_messages and time.time() < deadline
+                ):
+                    time.sleep(0.01)
+            end_to_end = time.perf_counter()
+
+            send_seconds = end_send - start_send
+            total_seconds = end_to_end - start_send
+            send_throughput = num_messages / send_seconds if send_seconds else 0.0
+            end_to_end_throughput = (
+                len(receiver_obj.messages) / total_seconds if total_seconds else 0.0
+            )
+
+            return {
+                "transport": transport,
+                "sent": num_messages,
+                "received": len(receiver_obj.messages),
+                "send_seconds": send_seconds,
+                "total_seconds": total_seconds,
+                "send_throughput": send_throughput,
+                "end_to_end_throughput": end_to_end_throughput,
+            }
+        finally:
+            sender.close()
+            receiver.close()
+
+    def test_udp_vs_tcp_heavy_stress_profile(self):
+        """
+        Compare UDP default transport vs optional TCP under heavy message load.
+        """
+        num_messages = 3000
+        payload_size = 4096
+
+        udp_metrics = self._run_transport_stress_benchmark(
+            "udp", num_messages=num_messages, payload_size=payload_size
+        )
+        tcp_metrics = self._run_transport_stress_benchmark(
+            "tcp", num_messages=num_messages, payload_size=payload_size
+        )
+
+        print("\n=== Transport stress benchmark (UDP vs TCP) ===")
+        print(
+            "UDP -> "
+            f"sent={udp_metrics['sent']}, "
+            f"received={udp_metrics['received']}, "
+            f"send_s={udp_metrics['send_seconds']:.3f}, "
+            f"total_s={udp_metrics['total_seconds']:.3f}, "
+            f"send_msg_s={udp_metrics['send_throughput']:.2f}, "
+            f"e2e_msg_s={udp_metrics['end_to_end_throughput']:.2f}"
+        )
+        print(
+            "TCP -> "
+            f"sent={tcp_metrics['sent']}, "
+            f"received={tcp_metrics['received']}, "
+            f"send_s={tcp_metrics['send_seconds']:.3f}, "
+            f"total_s={tcp_metrics['total_seconds']:.3f}, "
+            f"send_msg_s={tcp_metrics['send_throughput']:.2f}, "
+            f"e2e_msg_s={tcp_metrics['end_to_end_throughput']:.2f}"
+        )
+
+        # Keep this test stable across environments:
+        # verify both transports deliver a substantial fraction of the workload.
+        self.assertGreaterEqual(udp_metrics["received"], int(num_messages * 0.90))
+        self.assertGreaterEqual(tcp_metrics["received"], int(num_messages * 0.90))
+
 
 if __name__ == "__main__":
     unittest.main()

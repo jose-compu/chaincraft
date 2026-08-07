@@ -113,7 +113,9 @@ class TendermintCLI:
         print(
             f"To start this node, run: python {sys.argv[0]} start --config {args.config}"
         )
-        print("For other nodes to join, share genesis.json and update seed_nodes config.")
+        print(
+            "For other nodes to join, share genesis.json and update seed_nodes config."
+        )
 
     def start_node(self, args) -> None:
         """Start a Tendermint node"""

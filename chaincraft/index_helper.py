@@ -31,17 +31,14 @@ class IndexHelper:
         cursor = self.sqlite_conn.cursor()
 
         # Create tables for message types and their indexed fields
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS message_types (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             type_name TEXT UNIQUE NOT NULL
         )
-        """
-        )
+        """)
 
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS indexed_fields (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             type_id INTEGER NOT NULL,
@@ -49,11 +46,9 @@ class IndexHelper:
             FOREIGN KEY (type_id) REFERENCES message_types(id),
             UNIQUE(type_id, field_name)
         )
-        """
-        )
+        """)
 
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS indexed_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             message_hash TEXT UNIQUE NOT NULL,
@@ -61,11 +56,9 @@ class IndexHelper:
             message_data TEXT NOT NULL,
             FOREIGN KEY (type_id) REFERENCES message_types(id)
         )
-        """
-        )
+        """)
 
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS field_values (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             message_id INTEGER NOT NULL,
@@ -74,8 +67,7 @@ class IndexHelper:
             FOREIGN KEY (message_id) REFERENCES indexed_messages(id),
             FOREIGN KEY (field_id) REFERENCES indexed_fields(id)
         )
-        """
-        )
+        """)
 
         # Create indexes for faster lookups
         cursor.execute(
@@ -98,13 +90,11 @@ class IndexHelper:
             return
 
         cursor = self.sqlite_conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
         SELECT mt.type_name, if.field_name
         FROM message_types mt
         JOIN indexed_fields if ON mt.id = if.type_id
-        """
-        )
+        """)
 
         for type_name, field_name in cursor.fetchall():
             if type_name not in self.indexed_fields:

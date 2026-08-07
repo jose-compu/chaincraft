@@ -1,2 +1,41 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-*
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project-specific: node dbm storage (tests/examples)
+node_*.db*
+__test__.db*
+
+# Profiling / misc
+profile_*.txt
+*.log
+EVAL.md

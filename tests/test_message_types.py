@@ -169,14 +169,16 @@ class TestMessageTypes(unittest.TestCase):
             "sender": "Alice",
             "recipient": "Bob",
             "amount": 10.0,
-            "signature": sig1 + "7cb497a29b7b5c7d1c4e8f8c8d1b1a9d1c3f2e7c4b5a7d6c3e9f8d7c6b5a4d3e2f1c",
+            "signature": sig1
+            + "7cb497a29b7b5c7d1c4e8f8c8d1b1a9d1c3f2e7c4b5a7d6c3e9f8d7c6b5a4d3e2f1c",
         }
         transaction2 = {
             "message_type": "Transaction",
             "sender": "Bob",
             "recipient": "Charlie",
             "amount": 5.0,
-            "signature": sig2 + "7d7c5e3f1c9b7a5d3e1f8c6b4a2d9e7f5c3b1a8d6e4f2c9b7a5d3e1f8c6b4a2d",
+            "signature": sig2
+            + "7d7c5e3f1c9b7a5d3e1f8c6b4a2d9e7f5c3b1a8d6e4f2c9b7a5d3e1f8c6b4a2d",
         }
 
         _, shared_transaction1 = self.nodes[0].create_shared_message(transaction1)

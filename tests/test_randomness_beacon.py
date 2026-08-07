@@ -175,9 +175,9 @@ class TestRandomnessBeacon(unittest.TestCase):
 
         # 2. Invalid prev hash
         bad_prev = valid_block.copy()
-        bad_prev[
-            "prevBlockHash"
-        ] = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        bad_prev["prevBlockHash"] = (
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        )
         bad_prev["blockHash"] = beacon._calculate_block_hash(bad_prev)
         self.assertFalse(beacon.is_valid(SharedMessage(data=bad_prev)))
 
@@ -338,26 +338,25 @@ class TestRandomnessBeacon(unittest.TestCase):
             block = beacon.mine_block()
             beacon.add_message(SharedMessage(data=block))
 
-        # Analyze randomness of the top hash
-        top_hash = beacon.blocks[-1]["blockHash"]
-        print(f"\nOriginal hash: {top_hash}")
+        # Aggregate bit balance across all mined blocks (single-hash checks flake in CI).
+        zeros_total = 0
+        ones_total = 0
+        print("\nRehashed block-hash bit balance:")
+        for i, block in enumerate(beacon.blocks[1:], start=1):
+            rehashed = hashlib.sha256(block["blockHash"].encode()).hexdigest()
+            bits = bin(int(rehashed, 16))[2:].zfill(256)
+            z, o = bits.count("0"), bits.count("1")
+            zeros_total += z
+            ones_total += o
+            print(f"  block {i}: {z} zeros, {o} ones ({z / (z + o) * 100:.1f}% zeros)")
 
-        # Hash the blockHash again
-        hashed_hash = hashlib.sha256(top_hash.encode()).hexdigest()
-        print(f"Hashed again: {hashed_hash}")
-
-        # Convert to binary and count bits
-        binary = bin(int(hashed_hash, 16))[2:].zfill(256)
-        zeros = binary.count("0")
-        ones = binary.count("1")
-        print(f"Binary representation length: {len(binary)}")
+        total = zeros_total + ones_total
+        zero_pct = (zeros_total / total) * 100
         print(
-            f"Bit distribution: {zeros} zeros, {ones} ones ({zeros/(zeros+ones)*100:.2f}% zeros)"
+            f"  overall: {zeros_total} zeros, {ones_total} ones ({zero_pct:.2f}% zeros)"
         )
-
-        # Should be approximately 50/50
-        self.assertGreater(zeros, 100)
-        self.assertGreater(ones, 100)
+        self.assertGreaterEqual(zero_pct, 42)
+        self.assertLessEqual(zero_pct, 58)
 
         # Values between 0-1
         for i in range(5):
@@ -436,12 +435,14 @@ class TestRandomnessBeacon(unittest.TestCase):
     def test_randomness_distribution(self):
         """Test that the randomness has good distribution properties"""
         coinbase = generate_eth_address()
+        # Use lower difficulty for this statistical test to keep runtime short.
+        fast_difficulty_bits = max(4, self.__DIFFICULTY - 6)
         beacon = RandomnessBeacon(
-            coinbase_address=coinbase, difficulty_bits=self.__DIFFICULTY
+            coinbase_address=coinbase, difficulty_bits=fast_difficulty_bits
         )
 
         # Mine many blocks for better statistical analysis
-        num_blocks = 20
+        num_blocks = 10
         for _ in range(num_blocks):
             block = beacon.mine_block()
             beacon.add_message(SharedMessage(data=block))
@@ -482,11 +483,128 @@ class TestRandomnessBeacon(unittest.TestCase):
         print(f"Overall bit distribution: {zeros_total} zeros, {ones_total} ones")
         print(f"Percentages: {zero_percent:.2f}% zeros, {one_percent:.2f}% ones")
 
-        # Should be close to 50/50 (allow 5% deviation)
-        self.assertGreaterEqual(zero_percent, 45)
-        self.assertLessEqual(zero_percent, 55)
-        self.assertGreaterEqual(one_percent, 45)
-        self.assertLessEqual(one_percent, 55)
+        # Should be close to 50/50. With fewer samples allow wider margin.
+        self.assertGreaterEqual(zero_percent, 42)
+        self.assertLessEqual(zero_percent, 58)
+        self.assertGreaterEqual(one_percent, 42)
+        self.assertLessEqual(one_percent, 58)
+
+    def test_multi_block_reorg_longer_fork_wins(self):
+        """A longer fork should replace canonical chain by >1 block."""
+        addr_a = generate_eth_address()
+        addr_b = generate_eth_address()
+        beacon = RandomnessBeacon(coinbase_address=addr_a, difficulty_bits=3)
+
+        # Build initial canonical chain: genesis -> a1 -> a2
+        a1 = beacon.mine_block()
+        beacon.add_message(SharedMessage(data=a1))
+        a2 = beacon.mine_block()
+        beacon.add_message(SharedMessage(data=a2))
+        self.assertEqual(len(beacon.blocks), 3)
+        old_tip = beacon.blocks[-1]["blockHash"]
+
+        def _mine_on_parent(parent_hash: str, height: int, miner: str) -> dict:
+            block = {
+                "message_type": "BEACON_BLOCK",
+                "blockHeight": height,
+                "prevBlockHash": parent_hash,
+                "timestamp": int(time.time()),
+                "coinbaseAddress": miner,
+                "nonce": 0,
+            }
+            challenge = miner + parent_hash
+            nonce, block_hash = beacon.pow_primitive.create_proof(challenge)
+            block["nonce"] = nonce
+            block["blockHash"] = block_hash
+            return block
+
+        # Build competing fork: genesis -> b1 -> b2 -> b3
+        genesis_hash = beacon.blocks[0]["blockHash"]
+        b1 = _mine_on_parent(genesis_hash, 1, addr_b)
+        b2 = _mine_on_parent(b1["blockHash"], 2, addr_b)
+        b3 = _mine_on_parent(b2["blockHash"], 3, addr_b)
+
+        for blk in (b1, b2, b3):
+            self.assertTrue(beacon.is_valid(SharedMessage(data=blk)))
+            beacon.add_message(SharedMessage(data=blk))
+
+        self.assertEqual(len(beacon.blocks), 4)
+        self.assertEqual(beacon.blocks[-1]["blockHash"], b3["blockHash"])
+        self.assertNotEqual(old_tip, beacon.blocks[-1]["blockHash"])
+        self.assertEqual(beacon.ledger.get(addr_b, 0), 3)
+        self.assertEqual(beacon.ledger.get(addr_a, 0), 0)
+
+    def test_deep_reorg_drops_multiple_head_blocks(self):
+        """
+        Reorg should be able to drop more than one head block.
+        Example:
+          canonical: G -> A1 -> A2 -> A3 -> A4 -> A5
+          competing: G -> A1 -> A2 -> B3 -> B4 -> B5 -> B6
+        The canonical chain must switch to the B-branch, dropping A3/A4/A5.
+        """
+        addr_a = generate_eth_address()
+        addr_b = generate_eth_address()
+        beacon = RandomnessBeacon(coinbase_address=addr_a, difficulty_bits=3)
+
+        def _mine_on_parent(parent_hash: str, height: int, miner: str) -> dict:
+            block = {
+                "message_type": "BEACON_BLOCK",
+                "blockHeight": height,
+                "prevBlockHash": parent_hash,
+                "timestamp": int(time.time()),
+                "coinbaseAddress": miner,
+                "nonce": 0,
+            }
+            challenge = miner + parent_hash
+            nonce, block_hash = beacon.pow_primitive.create_proof(challenge)
+            block["nonce"] = nonce
+            block["blockHash"] = block_hash
+            return block
+
+        # Build canonical A-branch to height 5.
+        a_blocks = []
+        for _ in range(5):
+            new_block = beacon.mine_block()
+            beacon.add_message(SharedMessage(data=new_block))
+            a_blocks.append(new_block)
+
+        self.assertEqual(len(beacon.blocks), 6)  # genesis + 5
+        self.assertEqual(beacon.blocks[-1]["blockHash"], a_blocks[-1]["blockHash"])
+
+        # Fork from A2 (height 2) and extend to B6 (height 6).
+        fork_parent = a_blocks[1]["blockHash"]  # A2
+        b3 = _mine_on_parent(fork_parent, 3, addr_b)
+        b4 = _mine_on_parent(b3["blockHash"], 4, addr_b)
+        b5 = _mine_on_parent(b4["blockHash"], 5, addr_b)
+        b6 = _mine_on_parent(b5["blockHash"], 6, addr_b)
+
+        for blk in (b3, b4, b5, b6):
+            msg = SharedMessage(data=blk)
+            self.assertTrue(beacon.is_valid(msg))
+            beacon.add_message(msg)
+
+        # Canonical chain should now be G, A1, A2, B3, B4, B5, B6.
+        self.assertEqual(len(beacon.blocks), 7)
+        self.assertEqual(beacon.blocks[-1]["blockHash"], b6["blockHash"])
+        self.assertEqual(beacon.blocks[1]["blockHash"], a_blocks[0]["blockHash"])  # A1
+        self.assertEqual(beacon.blocks[2]["blockHash"], a_blocks[1]["blockHash"])  # A2
+        self.assertEqual(beacon.blocks[3]["blockHash"], b3["blockHash"])
+        self.assertEqual(beacon.blocks[4]["blockHash"], b4["blockHash"])
+        self.assertEqual(beacon.blocks[5]["blockHash"], b5["blockHash"])
+        self.assertEqual(beacon.blocks[6]["blockHash"], b6["blockHash"])
+
+        # Old A-head blocks must not remain canonical.
+        dropped_hashes = {
+            a_blocks[2]["blockHash"],
+            a_blocks[3]["blockHash"],
+            a_blocks[4]["blockHash"],
+        }
+        canonical_hashes = {b["blockHash"] for b in beacon.blocks}
+        self.assertTrue(dropped_hashes.isdisjoint(canonical_hashes))
+
+        # Ledger must match canonical branch only: A mined A1/A2, B mined B3..B6.
+        self.assertEqual(beacon.ledger.get(addr_a, 0), 2)
+        self.assertEqual(beacon.ledger.get(addr_b, 0), 4)
 
 
 if __name__ == "__main__":

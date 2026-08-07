@@ -90,7 +90,7 @@ class TestLocalDiscovery(unittest.TestCase):
 
         self.assertTrue(
             wait_for_local_peers(nodes[0], 2, timeout=20),
-            f"Expected 2 peers, got {len(nodes[0].peers)}"
+            f"Expected 2 peers, got {len(nodes[0].peers)}",
         )
         self.assertEqual(len(nodes[0].peers), 2)
 

@@ -6,5 +6,6 @@ Crypto primitives package for Chaincraft:
 - Proof-of-Work
 - Verifiable Delay Function (VDF)
 - ECDSA for signing
+- BIP-340 Schnorr (x-only pubkeys; coincurve or pure-Python)
 - ECDSA-based VRF (verifiable randomness)
 """
