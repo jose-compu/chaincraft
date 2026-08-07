@@ -53,7 +53,7 @@ stress = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["--import-mode=importlib"]
+addopts = ["--import-mode=importlib", "-m", "not stress"]
 markers = [
     "stress: heavy, long-running tests (storage/memory/indexing at scale); included in a plain pytest run like any other test - use -m stress to run only these, or -m \"not stress\" to exclude them",
 ]
