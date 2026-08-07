@@ -7,7 +7,7 @@ Thank you for your interest in contributing to Chaincraft! This document provide
 To work on Chaincraft, clone the repository and install the package in editable mode with development dependencies:
 
 ```bash
-git clone [https://github.com/jose-compu/chaincraft.git](https://github.com/jose-compu/chaincraft.git)
+git clone https://github.com/jose-compu/chaincraft.git
 cd chaincraft
 pip install -e ".[dev]"
 ```
