@@ -1,4 +1,4 @@
-# Chaincraft Protocol Implementation Specification v3 (0.7.0)
+# Chaincraft Protocol Implementation Specification v3 (0.8.0)
 
 You write protocol logic; Chaincraft handles networking, gossip, storage, peers,
 and concurrency.
@@ -10,7 +10,10 @@ beacon, protocols, and assembly via `BlockchainConfig`.
 **0.7.0** adds BIP-340 Schnorr (`SchnorrSignaturePrimitive`) with x-only 32-byte
 pubkeys for Nostr-style digests. Default backend is pure Python (stdlib); install
 `chaincraft[schnorr]` / `coincurve` for the native path (selected at import time).
-This is the sole feature in the 0.7.0 release (see `CHANGELOG.md`, issue #102).
+
+**0.8.0** adds optional UDP NAT traversal (`chaincraft.nat_traversal.NatTraversal`,
+`node.nat`): STUN discovery, hole punching, and relay coordination. Enable with
+`ChaincraftNode(nat_traversal=True)`. See `CHANGELOG.md` and PR #72.
 
 Two rules:
 
@@ -100,7 +103,7 @@ P2P messages: top-level `"p2p"` key, handled in `handle_p2p`; respond with
 Protect shared state with `threading.Lock` if methods are called outside the
 listener thread. Do not spawn threads or manage sockets yourself.
 
-## NAT traversal (UDP)
+## NAT traversal (UDP, 0.8.0)
 
 Optional. Implementation: `chaincraft.nat_traversal.NatTraversal` (attached as
 `node.nat`). Enable with `ChaincraftNode(nat_traversal=True)` (requires

@@ -18,6 +18,7 @@ Chaincraft is a Python-based framework for building and experimenting with block
 
 - **Modular blockchain (0.6.0)**: Pluggable ledger, fee market, mempool, consensus, and fork choice via `BlockchainConfig`
 - **BIP-340 Schnorr (0.7.0)**: x-only secp256k1 signatures for Nostr-style digests; pure-Python by default, optional `coincurve`
+- **NAT traversal (0.8.0)**: STUN, UDP hole punching, and relay coordination via `node.nat` (`nat_traversal=True`)
 - **Decentralized protocols**: Configurable ChatGroup, pub/sub, and CRDT key-value store
 - **Consensus catalog**: Gossip, PoW, BFT, and DAG engines selectable by name
 - **Decentralized Network**: Built-in peer discovery, connection management, and message propagation  
@@ -281,7 +282,12 @@ Contributions to Chaincraft are welcome! This is an educational project aimed at
 
 ## Current Status (Roadmap)
 
-### 0.7.0 (this release)
+### 0.8.0 (this release)
+
+- ✅ NAT traversal (`NatTraversal` / `node.nat`): STUN, hole punch, relay — PR #72
+- ✅ Protocol control messages no longer strike SharedObject peers (sync flake fix)
+
+### 0.7.0
 
 - ✅ BIP-340 Schnorr (`SchnorrSignaturePrimitive`): x-only pubkeys, pure-Python default, optional `coincurve` — closes #102
 
