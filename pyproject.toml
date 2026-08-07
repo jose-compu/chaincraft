@@ -46,10 +46,17 @@ dev = [
     "black>=21.0.0",
     "coincurve>=21.0.0",
 ]
+stress = [
+    "pytest-benchmark>=4.0",
+    "psutil>=5.9",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["--import-mode=importlib"]
+addopts = ["--import-mode=importlib", "-m", "not stress"]
+markers = [
+    "stress: heavy/long-running tests (storage, memory, indexing)",
+]
 
 [tool.coverage.run]
 source = ["chaincraft"]

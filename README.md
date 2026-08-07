@@ -229,22 +229,39 @@ The project includes various **examples**:
 
 ## Running Tests
 
-Run **all tests**:
+Install the test dependencies first (only needed once, or after pulling changes):
 
 ```bash
-python -m unittest discover -v -s tests
+pip install -e ".[dev]"
+```
+
+Run **all tests** (this is what CI runs):
+
+```bash
+pytest tests
 ```
 
 Run a **specific test file**:
 
 ```bash
-python -m unittest tests/test_blockchain_example.py
+pytest tests/test_blockchain_example.py
 ```
 
 Run a **specific test**:
 
 ```bash
-python -m unittest -v -k test_local_discovery_enabled tests/test_local_discovery.py
+pytest tests/test_local_discovery.py -v -k test_local_discovery_enabled
+```
+
+Some tests are marked `stress` — heavy, long-running tests (storage/memory/
+indexing at scale). They are excluded by default via `addopts` in
+`pyproject.toml` (so a plain `pytest tests` / CI run skips them).
+
+To run only the stress suite:
+
+```bash
+pip install -e ".[dev,stress]"
+pytest tests -m stress
 ```
 
 ## Design Principles
