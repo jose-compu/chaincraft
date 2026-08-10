@@ -15,6 +15,7 @@ from .state_memento import StateMemento
 from .shared_object import SharedObject, SharedObjectException
 from .shared_message import SharedMessage
 from .index_helper import IndexHelper
+from .nat_traversal import NatTraversal, HOLE_PUNCH_SENTINEL
 
 
 def _pick_free_port(host: str, transport_protocol: str) -> int:
@@ -49,6 +50,10 @@ class ChaincraftNode:
         port: Optional[int] = None,
         use_compression: bool = False,
         transport_protocol: str = "udp",
+        nat_traversal: bool = False,
+        external_host: Optional[str] = None,
+        external_port: Optional[int] = None,
+        stun_servers: Optional[List[str]] = None,
     ) -> None:
         """
         Initialize the ChaincraftNode with optional parameters.
@@ -112,6 +117,15 @@ class ChaincraftNode:
         self.indexed_fields: Dict[str, List[str]] = {}
         if self.index_helper:
             self.indexed_fields = self.index_helper.indexed_fields
+
+        # NAT traversal (implementation lives in chaincraft.nat_traversal)
+        self.nat = NatTraversal(
+            self,
+            enabled=nat_traversal,
+            external_host=external_host,
+            external_port=external_port,
+            stun_servers=stun_servers,
+        )
 
     def set_indexed_fields(self, message_type: str, fields: List[str]) -> None:
         """
@@ -196,12 +210,16 @@ class ChaincraftNode:
     def start(self) -> None:
         """
         Start the node by binding to a socket and launching the listener and gossip threads.
+        If nat_traversal is enabled, discover the external address after binding.
         """
         if self.is_running:
             return
 
         self._bind_socket()
         self.is_running = True
+
+        if self.nat.enabled:
+            self.nat.discover_external_address()
 
         threading.Thread(target=self.listen_for_messages, daemon=True).start()
         threading.Thread(target=self.gossip, daemon=True).start()
@@ -249,7 +267,8 @@ class ChaincraftNode:
 
     def listen_for_messages(self) -> None:
         """
-        Listen for incoming messages, decompress them, and handle new messages.
+        Listen for incoming datagrams, decompress them, and handle new messages.
+        Single-byte hole-punch sentinel packets are silently discarded.
         """
         while self.is_running:
             try:
@@ -257,6 +276,9 @@ class ChaincraftNode:
                 addr: Tuple[str, int]
                 if self.transport_protocol == "udp":
                     compressed_data, addr = self.socket.recvfrom(self.max_msg_size)
+                    # Silently discard NAT hole-punch sentinel packets (1 zero byte)
+                    if compressed_data == HOLE_PUNCH_SENTINEL:
+                        continue
                 else:
                     conn, addr = self.socket.accept()
                     with conn:
@@ -390,10 +412,15 @@ class ChaincraftNode:
     def send_peer_discovery(self, host: str, port: int) -> None:
         """
         Send a discovery message to the specified peer.
+        When nat_traversal is enabled the message also carries the node's
+        external (public) address so that peers behind NAT can be reached.
         """
-        discovery_message = json.dumps(
-            {SharedMessage.PEER_DISCOVERY: f"{self.host}:{self.port}"}
-        )
+        discovery_payload: Dict[str, Any] = {
+            SharedMessage.PEER_DISCOVERY: f"{self.host}:{self.port}"
+        }
+        if self.nat.enabled:
+            discovery_payload["external_address"] = self.nat.external_address_str()
+        discovery_message = json.dumps(discovery_payload)
         compressed_message = self.compress_message(discovery_message)
         self._send_bytes((host, port), compressed_message)
 
@@ -483,21 +510,37 @@ class ChaincraftNode:
             else:
                 shared_message = SharedMessage.from_json(message)
 
-            # Additional data-based actions (peer discovery, local peers, etc.)
+            # Protocol control messages bypass SharedObject validation. Running them
+            # through is_valid() incorrectly strikes/bans peers (e.g. merkelized
+            # update requests) and can empty the peer list so application
+            # broadcasts never leave the originating node.
             if isinstance(shared_message.data, dict):
                 if SharedMessage.PEER_DISCOVERY in shared_message.data:
                     self._handle_peer_discovery(shared_message)
-                elif (
+                    # Preserve gossip of discovery advertisements.
+                    self._store_and_broadcast(message_hash, message)
+                    return
+                if (
                     SharedMessage.REQUEST_LOCAL_PEERS in shared_message.data
                     and self.local_discovery
                 ):
                     self._handle_local_peer_request(shared_message)
-                elif SharedMessage.LOCAL_PEERS in shared_message.data:
+                    return
+                if SharedMessage.LOCAL_PEERS in shared_message.data:
                     self._handle_local_peer_response(shared_message, addr)
-                elif SharedMessage.REQUEST_SHARED_OBJECT_UPDATE in shared_message.data:
+                    return
+                if SharedMessage.REQUEST_SHARED_OBJECT_UPDATE in shared_message.data:
+                    # Do not store: identical digests must remain re-handleable.
                     self._handle_shared_object_update_request(shared_message, addr)
+                    return
+                if SharedMessage.NAT_TRAVERSAL_REQUEST in shared_message.data:
+                    self.nat.handle_request(shared_message, addr)
+                    return
+                if SharedMessage.NAT_TRAVERSAL_RESPONSE in shared_message.data:
+                    self.nat.handle_response(shared_message, addr)
+                    return
 
-            # if valid types, process
+            # Application payload: validate, store, gossip
             self._handle_shared_message(shared_message, message, message_hash, addr)
 
         except json.JSONDecodeError:
@@ -594,12 +637,22 @@ class ChaincraftNode:
     def _handle_peer_discovery(self, shared_message: SharedMessage) -> None:
         """
         Handle a PEER_DISCOVERY message by connecting to the discovered peer.
+        When the message carries an external_address and nat_traversal is
+        enabled, attempt UDP hole punching before registering the peer.
         """
         peer_address: str = shared_message.data[SharedMessage.PEER_DISCOVERY]
         host: str
         port: str
         host, port = peer_address.split(":")
-        self.connect_to_peer(host, int(port), discovery=True)
+
+        external_address: Optional[str] = shared_message.data.get("external_address")
+        if self.nat.enabled and external_address:
+            ext_host, ext_port_str = external_address.split(":")
+            ext_port = int(ext_port_str)
+            self.nat.initiate_hole_punch(ext_host, ext_port)
+            self.connect_to_peer(ext_host, ext_port, discovery=True)
+        else:
+            self.connect_to_peer(host, int(port), discovery=True)
 
     def _handle_local_peer_request(self, shared_message: SharedMessage) -> None:
         """
@@ -633,6 +686,76 @@ class ChaincraftNode:
                 self.connect_to_peer(host, int(port))
             self.waiting_local_peer[peer] = False
             del self.waiting_local_peer[peer]
+
+    # ------------------------------------------------------------------ #
+    #  NAT traversal (thin delegates → chaincraft.nat_traversal)           #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def nat_traversal(self) -> bool:
+        return self.nat.enabled
+
+    @nat_traversal.setter
+    def nat_traversal(self, value: bool) -> None:
+        self.nat.enabled = value
+
+    @property
+    def external_host(self) -> str:
+        return self.nat.external_host
+
+    @external_host.setter
+    def external_host(self, value: str) -> None:
+        self.nat.external_host = value
+
+    @property
+    def external_port(self) -> int:
+        return self.nat.external_port
+
+    @external_port.setter
+    def external_port(self, value: int) -> None:
+        self.nat.external_port = value
+
+    @property
+    def stun_servers(self) -> List[str]:
+        return self.nat.stun_servers
+
+    @stun_servers.setter
+    def stun_servers(self, value: List[str]) -> None:
+        self.nat.stun_servers = value
+
+    def discover_external_address(self) -> Optional[Tuple[str, int]]:
+        """Discover public address via STUN (see ``NatTraversal``)."""
+        return self.nat.discover_external_address()
+
+    def _stun_request(
+        self, stun_host: str, stun_port: int
+    ) -> Optional[Tuple[str, int]]:
+        return self.nat.stun_request(stun_host, stun_port)
+
+    def _parse_stun_response(
+        self, data: bytes, magic_cookie: int
+    ) -> Optional[Tuple[str, int]]:
+        return self.nat.parse_stun_response(data, magic_cookie)
+
+    def initiate_hole_punch(self, target_host: str, target_port: int) -> None:
+        """UDP hole punch toward a peer (see ``NatTraversal``)."""
+        self.nat.initiate_hole_punch(target_host, target_port)
+
+    def send_nat_traversal_request(
+        self, relay_host: str, relay_port: int, target_host: str, target_port: int
+    ) -> None:
+        """Ask a relay to introduce this node to a target (see ``NatTraversal``)."""
+        self.nat.send_request(relay_host, relay_port, target_host, target_port)
+
+    def _handle_nat_traversal_request(
+        self, shared_message: SharedMessage, addr: Tuple[str, int]
+    ) -> None:
+        self.nat.handle_request(shared_message, addr)
+
+    def _handle_nat_traversal_response(
+        self, shared_message: SharedMessage, addr: Tuple[str, int]
+    ) -> None:
+        self.nat.handle_response(shared_message, addr)
 
     def is_message_accepted(self, message: str) -> bool:
         """

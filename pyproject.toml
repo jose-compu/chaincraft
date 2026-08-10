@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chaincraft"
-version = "0.7.0"
+version = "0.8.0"
 description = "A platform for blockchain education and prototyping"
 readme = "README.md"
 license = { text = "MIT" }
@@ -31,7 +31,7 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "cryptography>=48.0.1",
+    "cryptography>=50.0.0",
 ]
 
 [project.optional-dependencies]
@@ -46,10 +46,17 @@ dev = [
     "black>=21.0.0",
     "coincurve>=21.0.0",
 ]
+stress = [
+    "pytest-benchmark>=4.0",
+    "psutil>=5.9",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["--import-mode=importlib"]
+addopts = ["--import-mode=importlib", "-m", "not stress"]
+markers = [
+    "stress: heavy/long-running tests (storage, memory, indexing)",
+]
 
 [tool.coverage.run]
 source = ["chaincraft"]

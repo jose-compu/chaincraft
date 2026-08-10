@@ -34,7 +34,7 @@ Trusted publishing is the modern, secure way to publish packages to PyPI without
 
 The GitHub workflow (`.github/workflows/publish-to-pypi.yml`) is triggered when you create a new release:
 
-1. **Test Phase**: Runs tests across multiple Python versions (3.8-3.12)
+1. **Test Phase**: Runs tests across multiple Python versions (3.9-3.12)
 2. **Build Phase**: Builds the package (both source distribution and wheel)
 3. **Publish Phase**: Publishes to PyPI using trusted publishing
 
@@ -43,19 +43,19 @@ The GitHub workflow (`.github/workflows/publish-to-pypi.yml`) is triggered when 
 To publish a new version:
 
 1. **Update Version**: Set the same version in `pyproject.toml`, `setup.py`, and `chaincraft/__init__.py` (and `examples/__init__.py` if present).
-2. **Changelog**: Document the release in `CHANGELOG.md` (0.7.0 = BIP-340 Schnorr only).
+2. **Changelog**: Document the release in `CHANGELOG.md` (0.8.0 = NAT traversal).
 3. **Commit & merge**: Land the release PR on `main`.
 4. **Tag & release**:
    - Tag `vX.Y.Z` on `main` and push the tag (triggers PyPI workflow on `v*` tags).
    - Or: GitHub → Releases → “Create a new release” with tag `vX.Y.Z` and notes from `CHANGELOG.md`.
 
-Example for 0.7.0 after merge to `main`:
+Example for 0.8.0 after merge to `main`:
 
 ```bash
 git checkout main && git pull
-git tag -a v0.7.0 -m "Chaincraft v0.7.0 — BIP-340 Schnorr"
-git push origin v0.7.0
-gh release create v0.7.0 --title "Chaincraft v0.7.0 - Córdoba" --notes-file CHANGELOG.md
+git tag -a v0.8.0 -m "Chaincraft v0.8.0 — NAT traversal"
+git push origin v0.8.0
+gh release create v0.8.0 --title "Chaincraft v0.8.0 - Salta" --notes-file CHANGELOG.md
 ```
 
 The workflow will automatically trigger and publish the package to PyPI.
@@ -155,4 +155,4 @@ chaincraft-cli --help
 - Never commit API tokens to the repository
 - Use trusted publishing when possible
 - Review the workflow permissions carefully
-- Consider using environment protection rules for production releases 
+- Consider using environment protection rules for production releases
