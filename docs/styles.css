@@ -59,11 +59,47 @@ a:hover {
   text-decoration: underline;
 }
 
-/* Header */
-.site-header {
+/* Deprecation */
+.sticky-top {
   position: sticky;
   top: 0;
   z-index: 100;
+}
+
+.deprecation {
+  margin: 0;
+  padding: 0.85rem 1.5rem;
+  background: #c4a035;
+  color: #0d0f12;
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  border-bottom: 4px solid #000;
+}
+
+.deprecation-label {
+  display: inline-block;
+  margin-right: 0.6rem;
+  padding: 0.2rem 0.45rem;
+  background: #0d0f12;
+  color: #c4a035;
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.deprecation a {
+  color: #0d0f12;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* Header */
+.site-header {
+  position: static;
+  top: auto;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
