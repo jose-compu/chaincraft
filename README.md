@@ -2,6 +2,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Python Unit Tests](https://github.com/jose-compu/chaincraft/actions/workflows/python-app.yml/badge.svg)](https://github.com/jose-compu/chaincraft/actions/workflows/python-app.yml)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/jose-compu/chaincraft?utm_source=badge)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Blockchain](https://img.shields.io/badge/blockchain-educational-blueviolet)](https://github.com/jose-compu/chaincraft)
 [![ECDSA](https://img.shields.io/badge/ECDSA-supported-green)](https://github.com/jose-compu/chaincraft)
@@ -275,6 +276,13 @@ Stress suite (opt-in):
 ```bash
 pip install -e ".[dev,stress]"
 pytest tests -m stress
+```
+
+Performance benchmarks (tracked in CI with [CodSpeed](https://codspeed.io)):
+
+```bash
+pip install -e ".[bench]"
+pytest benchmarks --codspeed
 ```
 
 ## Design Principles

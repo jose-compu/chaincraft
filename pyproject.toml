@@ -50,6 +50,10 @@ stress = [
     "pytest-benchmark>=4.0",
     "psutil>=5.9",
 ]
+bench = [
+    "pytest>=6.0",
+    "pytest-codspeed>=4.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
