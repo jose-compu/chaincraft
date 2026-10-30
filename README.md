@@ -1,3 +1,9 @@
+⚠️ _DEPRECATED AND REPLACED BY THE CHAINCRAFT IN MONOREPO WITH PARITY PROPERTIES WITH TS AND RUST_ ⚠️
+
+⚠️ _CURRENT WEBSITE: see https://chaincraft.network/_ ⚠️
+
+⚠️ _NEW REPO: https://github.com/jose-compu/chaincraft-monorepo_ ⚠️
+
 # Chaincraft
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
